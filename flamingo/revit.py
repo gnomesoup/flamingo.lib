@@ -1,4 +1,4 @@
-from pyrevit import DB, forms
+from pyrevit import DB, HOST_APP, forms
 from os import path
 import re
 
@@ -128,3 +128,12 @@ def GetModelFilePath(doc, promptIfBlank=True):
 
 def GetModelDirectory(doc):
     return path.dirname(GetModelFilePath(doc))
+
+def GetPhase(phaseName, doc=None):
+    if doc is None:
+        doc = HOST_APP.doc
+    phases = doc.Phases
+    for phase in phases:
+        if phase.Name == phaseName:
+            return phase
+    return None
