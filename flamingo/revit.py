@@ -137,3 +137,17 @@ def GetPhase(phaseName, doc=None):
         if phase.Name == phaseName:
             return phase
     return None
+
+def OpenDetached(filePath, audit=False, preserveWorksets=True):
+    modelPath = DB.ModelPathUtils.ConvertUserVisiblePathToModelPath(
+        filePath
+    )
+    openOptions = DB.OpenOptions()
+    if preserveWorksets:
+        detachOption = DB.DetachFromCentralOption.DetachAndDiscardWorksets
+    else:
+        detachOption = DB.DetachFromCentralOption.DetachAndPreserveWorksets
+    openOptions.DetachFromCentralOption = detachOption
+    openOptions.Audit = True
+    doc = HOST_APP.app.OpenDocumentFile(modelPath, openOptions)
+    return doc
