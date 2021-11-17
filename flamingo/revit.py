@@ -151,3 +151,17 @@ def OpenDetached(filePath, audit=False, preserveWorksets=True):
     openOptions.Audit = True
     doc = HOST_APP.app.OpenDocumentFile(modelPath, openOptions)
     return doc
+
+def SaveAsCentral(doc, centralPath):
+    saveAsOptions = DB.SaveAsOptions()
+    saveAsOptions.OverwriteExistingFile = True
+    workshareOptions = DB.WorksharingSaveAsOptions()
+    workshareOptions.SaveAsCentral = True
+    workshareOptions.OpenWorksetsDefault = DB.SimpleWorksetConfiguration.AllWorksets
+    saveAsOptions.SetWorksharingOptions(workshareOptions)
+    DB.Document.SaveAs(doc, centralPath, saveAsOptions)
+    relinquishOptions = DB.RelinquishOptions(True)
+    transactionOptions = DB.TransactWithCentralOptions()
+    DB.WorksharingUtils.RelinquishOwnership(doc, relinquishOptions,
+                                            transactionOptions)
+    return doc
