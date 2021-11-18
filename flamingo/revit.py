@@ -1,5 +1,7 @@
-from pyrevit import DB, HOST_APP, forms
-from os import path
+from pyrevit import DB, HOST_APP, forms, revit
+from os import path, sep
+from string import ascii_uppercase
+from flamingo.geometry import GetMinMaxPoints, GetMidPoint
 import re
 
 def GetParameterFromProjectInfo(doc, parameterName):
@@ -165,3 +167,149 @@ def SaveAsCentral(doc, centralPath):
     DB.WorksharingUtils.RelinquishOwnership(doc, relinquishOptions,
                                             transactionOptions)
     return doc
+
+def DoorRenameByRoomNumber(
+    doors,
+    phase,
+    prefix=None,
+    seperator=None,
+    suffixList=None,
+    doc=None,
+):
+    """[summary]
+
+    Args:
+        doors (list[DB.Elements]): List of Revit doors to renumber.
+        phase (DB.Phases): Phase to use when getting room property.
+        prefix (str, optional): String to append to beinging of door number.
+            Defaults to None.
+        seperator (str, optional): String to place between door number and 
+            suffix. Defaults to None.
+        suffixList (list[str], optional): List of strings to append to the end
+            of doors located in the same room. Defaults to and uppercase letters
+            in alphabetical order.
+        doc (DB.Document, optional): [description]. Defaults to None.
+    
+    Returns:
+        list[DB.Elements]: list of renumbered doors
+    """
+    if doc is None:
+        doc = HOST_APP.doc
+    if prefix is None:
+        prefix = ""
+    if seperator is None:
+        seperator = ""
+    if suffixList is None:
+        suffixList = ascii_uppercase
+
+    # Make a dictionary of rooms with door properties
+    roomDoors = {}
+    for door in doors:
+        if not door:
+            continue
+
+        toRoom = (door.ToRoom)[phase]
+        if toRoom:
+            toRoomId = toRoom
+            if toRoom.Id in roomDoors:
+                roomDoors[toRoom.Id]["doors"] = \
+                    roomDoors[toRoom.Id]["doors"] + [door.Id]
+            else:
+                roomDoors[toRoom.Id] = {"doors": [door.Id]}
+                roomDoors[toRoom.Id]["roomNumber"] = toRoom.Number
+                # point1, point2 = GetMinMaxPoints(toRoom, activeView)
+                # roomCenter = GetMidPoint(point1, point2)
+                # roomDoors[toRoom.Id]["roomLocation"] = roomCenter
+
+        fromRoom = (door.FromRoom)[phase]
+        if fromRoom:
+            if fromRoom.Id in roomDoors:
+                roomDoors[fromRoom.Id]["doors"] =\
+                    roomDoors[fromRoom.Id]["doors"] + [door.Id]
+            else:
+                roomDoors[fromRoom.Id] = {"doors": [door.Id]}
+                roomDoors[fromRoom.Id]["roomNumber"] = fromRoom.Number
+                # point1, point2 = GetMinMaxPoints(fromRoom, activeView)
+                # roomCenter = GetMidPoint(point1, point2)
+                # roomDoors[fromRoom.Id]["roomLocation"] = roomCenter
+
+    maxLength = max([len(values["doors"]) for values in roomDoors.values()])
+    for key, values in roomDoors.items():
+        roomDoors[key]["doorCount"] = len(values["doors"])
+
+    # Number doors
+    doorCount=len(doors)
+    numberedDoors = set()
+    with revit.Transaction("Renumber Doors"):
+        i = 1
+        n = 0
+        nMax = doorCount * 2
+
+        # iterate through counts of doors connected to each room
+        while i < maxLength:
+            # avoid a loop by stoping at double the count of doors
+            if n > nMax:
+                break
+            noRooms = True
+            # Go through each room and look for door counts that match
+            # current level
+            for key, values in roomDoors.items():
+                if values["doorCount"] == i:
+                    noRooms = False
+                    doorIds = values["doors"]
+                    doorsToNumber = [
+                        doorId for doorId in doorIds
+                        if doorId not in numberedDoors
+                    ]
+                    # Go through all the doors connected to the room
+                    # and give them a number
+                    for j, doorId in enumerate(doorsToNumber):
+                        numberedDoors.add(doorId)
+                        door = doc.GetElement(doorId)
+                        if len(doorsToNumber) > 1:
+                            # point1, point2 = GetMinMaxPoints(door, activeView)
+                            # roomCenter = values["roomLocation"]
+                            # doorCenter = GetMidPoint(point1, point2)
+                            # doorVector = doorCenter.Subtract(roomCenter)
+                            # angle = (DB.XYZ.BasisY).AngleTo(
+                            #     doorVector.Normalize()
+                            # )
+                            # dotProduct = (DB.XYZ.BasisY).DotProduct(
+                            #     doorVector.Normalize()
+                            # )
+                            mark = "{}{}".format(
+                                values["roomNumber"], ascii_uppercase[j]
+                            )
+                            # print("{}: {} ({})".format(mark, angle, dotProduct))
+                        else:
+                            mark = values["roomNumber"]
+                        markParameter = door.get_Parameter(
+                            DB.BuiltInParameter.ALL_MODEL_MARK
+                        )
+                        markParameter.Set(mark)
+            for roomId, values in roomDoors.items():
+                unNumberedDoors = filter(None, [
+                    doorId for doorId in values["doors"]
+                    if doorId not in numberedDoors
+                ])
+                roomDoors[roomId]["doors"] = unNumberedDoors
+                roomDoors[roomId]["doorCount"] = len(unNumberedDoors)
+            if noRooms:
+                i += 1
+            n += 1
+    return doors
+
+def FilterByCategory(elements, builtInCategory):
+    """Filters a list of Revit elements by a BuiltInCategory
+
+    Args:
+        elements (list[DB.Elements]): List of revit elements to filter
+        builtInCategory (DB.BuiltInCategory): Revit built in category enum
+            to filter by
+    Returns:
+        list[DB.Elements]: List of revit elements that matched the filter
+    """
+    return [
+        element for element in elements
+        if element.Category.Id.IntegerValue == int(builtInCategory)
+    ]
