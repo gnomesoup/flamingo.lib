@@ -45,6 +45,12 @@ def GetMinMaxPoints(element, view):
         minimumPoint = boundingBox.Min
     return[minimumPoint, maximumPoint]
 
+def GetMidPoint(point1, point2):
+    x = (point1.X + point2.X) / 2
+    y = (point1.Y + point2.Y) / 2
+    z = (point1.Z + point2.Z) / 2
+    return DB.XYZ(x, y, z)
+
 def GetMidPointIntersections(
     doc, origin, vector, outline, gridSpacing, referenceList
 ):
