@@ -1,7 +1,8 @@
-from pyrevit import DB, HOST_APP, forms, revit
-from os import path, sep
-from string import ascii_uppercase
 from flamingo.geometry import GetMinMaxPoints, GetMidPoint
+from math import atan2, pi
+from pyrevit import DB, HOST_APP, forms, revit
+from os import path
+from string import ascii_uppercase
 import re
 
 def GetParameterFromProjectInfo(doc, parameterName):
@@ -202,36 +203,51 @@ def DoorRenameByRoomNumber(
     if suffixList is None:
         suffixList = ascii_uppercase
 
+    allDoors = DB.FilteredElementCollector(doc)\
+        .OfCategory(DB.BuiltInCategory.OST_Doors)\
+        .WhereElementIsNotElementType()\
+        .ToElements()
+
     # Make a dictionary of rooms with door properties
     roomDoors = {}
-    for door in doors:
+    for door in allDoors:
         if not door:
             continue
-
+        roomsToAdd = []
         toRoom = (door.ToRoom)[phase]
         if toRoom:
-            toRoomId = toRoom
             if toRoom.Id in roomDoors:
                 roomDoors[toRoom.Id]["doors"] = \
                     roomDoors[toRoom.Id]["doors"] + [door.Id]
             else:
-                roomDoors[toRoom.Id] = {"doors": [door.Id]}
-                roomDoors[toRoom.Id]["roomNumber"] = toRoom.Number
-                # point1, point2 = GetMinMaxPoints(toRoom, activeView)
-                # roomCenter = GetMidPoint(point1, point2)
-                # roomDoors[toRoom.Id]["roomLocation"] = roomCenter
-
+                roomsToAdd.append(toRoom)
         fromRoom = (door.FromRoom)[phase]
         if fromRoom:
             if fromRoom.Id in roomDoors:
                 roomDoors[fromRoom.Id]["doors"] =\
                     roomDoors[fromRoom.Id]["doors"] + [door.Id]
             else:
-                roomDoors[fromRoom.Id] = {"doors": [door.Id]}
-                roomDoors[fromRoom.Id]["roomNumber"] = fromRoom.Number
-                # point1, point2 = GetMinMaxPoints(fromRoom, activeView)
-                # roomCenter = GetMidPoint(point1, point2)
-                # roomDoors[fromRoom.Id]["roomLocation"] = roomCenter
+                roomsToAdd.append(fromRoom)
+        for roomToAdd in roomsToAdd:
+            roomDoors[roomToAdd.Id] = {"doors": [door.Id]}
+            roomDoors[roomToAdd.Id]["roomNumber"] = roomToAdd.Number
+            roomDoors[roomToAdd.Id]["roomArea"] = roomToAdd.Area
+            roomCenter = roomToAdd.Location.Point
+            roomDoors[roomToAdd.Id]["roomLocation"] = roomCenter
+ 
+    # Make a dictionary of door connection counts. This will be used to
+    # prioritize doors with more connections when assigning a letter value
+    roomDoorsDoors = [
+        value['doors'] for value in roomDoors.values()
+    ]
+    doorConnectors = {}
+    for door in allDoors:
+        for i in roomDoorsDoors:
+            if door.Id in i:
+                if door.Id in doorConnectors:
+                    doorConnectors[door.Id] += len(i)
+                else:
+                    doorConnectors[door.Id] = len(i)
 
     maxLength = max([len(values["doors"]) for values in roomDoors.values()])
     for key, values in roomDoors.items():
@@ -246,14 +262,25 @@ def DoorRenameByRoomNumber(
         nMax = doorCount * 2
 
         # iterate through counts of doors connected to each room
-        while i < maxLength:
+        while i <= maxLength:
             # avoid a loop by stoping at double the count of doors
             if n > nMax:
+            # if n > 4:
                 break
             noRooms = True
+            roomsThisRound = [
+                roomId for roomId, value in roomDoors.items()
+                if value["doorCount"] == i
+            ]
+            roomsThisRound = sorted(
+                roomsThisRound,
+                key=lambda x: roomDoors[x]["roomArea"]
+            )
             # Go through each room and look for door counts that match
             # current level
-            for key, values in roomDoors.items():
+            # for key, values in roomDoors.items():
+            for roomId in roomsThisRound:
+                values = roomDoors[roomId]
                 if values["doorCount"] == i:
                     noRooms = False
                     doorIds = values["doors"]
@@ -263,24 +290,32 @@ def DoorRenameByRoomNumber(
                     ]
                     # Go through all the doors connected to the room
                     # and give them a number
-                    for j, doorId in enumerate(doorsToNumber):
+                    sortedDoorsToNumber = sorted(
+                        doorsToNumber,
+                        key=lambda x: doorConnectors[x],
+                        reverse=True
+                    )
+                    for j, doorId in enumerate(sortedDoorsToNumber):
                         numberedDoors.add(doorId)
                         door = doc.GetElement(doorId)
                         if len(doorsToNumber) > 1:
-                            # point1, point2 = GetMinMaxPoints(door, activeView)
-                            # roomCenter = values["roomLocation"]
-                            # doorCenter = GetMidPoint(point1, point2)
-                            # doorVector = doorCenter.Subtract(roomCenter)
-                            # angle = (DB.XYZ.BasisY).AngleTo(
-                            #     doorVector.Normalize()
-                            # )
-                            # dotProduct = (DB.XYZ.BasisY).DotProduct(
-                            #     doorVector.Normalize()
-                            # )
+                            boundingBox = door.get_BoundingBox(None)
+                            roomCenter = values["roomLocation"]
+                            doorCenter = GetMidPoint(
+                                boundingBox.Min,
+                                boundingBox.Max
+                            )
+                            doorVector = doorCenter.Subtract(roomCenter)
+                            angle = atan2(doorVector.Y, doorVector.X)
+                            angleReversed = angle * -1.0
+                            pi2 = pi * 2.0
+                            angleNormalized = (
+                                ((angleReversed + pi2 + 2) % pi2) / pi2
+                            )
                             mark = "{}{}".format(
                                 values["roomNumber"], ascii_uppercase[j]
                             )
-                            # print("{}: {} ({})".format(mark, angle, dotProduct))
+                            print("{}: {} {} rad | {} ratio".format(mark, doorVector, angle, angleNormalized))
                         else:
                             mark = values["roomNumber"]
                         markParameter = door.get_Parameter(
