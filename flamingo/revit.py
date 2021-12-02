@@ -1,9 +1,12 @@
 from flamingo.geometry import GetMinMaxPoints, GetMidPoint
 from math import atan2, pi
-from pyrevit import DB, HOST_APP, forms, revit
+from pyrevit import clr, DB, HOST_APP, forms, revit
 from os import path
 from string import ascii_uppercase
 import re
+
+clr.AddReference("System")
+from System.Collections.Generic import List
 
 def GetParameterFromProjectInfo(doc, parameterName):
     """
@@ -348,3 +351,98 @@ def FilterByCategory(elements, builtInCategory):
         element for element in elements
         if element.Category.Id.IntegerValue == int(builtInCategory)
     ]
+
+def HideUnplacedViewTags(view=None, doc=None):
+    """Hides all unreferenced view tags in the specified view by going through
+    all elevation views, elevation tags, sections, and callouts in the view and
+    identifying views that are not placed on a sheet and hides the associated
+    tag. Elevation tags who have all hosted elevation view hidden by element or
+    by a view filter will also be hidden.
+
+    Args:
+        view (Autodesk.Revit.DB.View, optional): View who's view tags are to be
+            hidden. Defaults to None.
+        doc (Autodesk.Revit.DB.Document, optional): Revit document that houses
+            the view. Defaults to None.
+    """
+    # TODO: If current view is a sheet, hide on all non-drafting and non-3D views
+    # TODO: Provide list of sheet sets to run the script on
+
+    if doc is None:
+        doc = HOST_APP.doc
+    if view is None:
+        view = doc.ActiveView
+
+    viewers = DB.FilteredElementCollector(doc, view.Id) \
+        .OfCategory(DB.BuiltInCategory.OST_Viewers) \
+        .WhereElementIsNotElementType()\
+        .ToElements()
+    viewerIds = [viewer.Id.IntegerValue for viewer in viewers]
+    elevs = DB.FilteredElementCollector(doc, view.Id) \
+        .OfCategory(DB.BuiltInCategory.OST_Elev) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+
+    # Go through all filtered elements to figure out if they have a sheet number
+    # If they don't hide them by element
+    hideList = List[DB.ElementId]()
+    hideCount = 0
+    for element in viewers:
+        sheetNumberParam = element.get_Parameter(
+            DB.BuiltInParameter.VIEWER_SHEET_NUMBER
+        )
+        if sheetNumberParam and sheetNumberParam.AsString() == "---":
+            hideList.Add(element.Id)
+            hideCount = hideCount + 1
+        elif sheetNumberParam and sheetNumberParam.AsString() == "-":
+            hideList.Add(element.Id)
+
+    elementFilter = DB.ElementCategoryFilter(DB.BuiltInCategory.OST_Viewers)
+    for element in elevs:
+        sheetNumberParam = element.get_Parameter(
+            DB.BuiltInParameter.VIEWER_SHEET_NUMBER
+        )
+        if sheetNumberParam and sheetNumberParam.AsString() == "-":
+            hideList.Add(element.Id)
+            print("Elevation Mark No Sheet")
+            continue
+        dependentElementIds = element.GetDependentElements(elementFilter)
+        shownViews = len(dependentElementIds)
+        print(element.Name)
+        print(sheetNumberParam.AsString())
+        print("shownViews = {}".format(shownViews))
+        for dependentElementId in dependentElementIds:
+            if dependentElementId.IntegerValue not in viewerIds:
+                print("Not in viewers list")
+                shownViews = shownViews - 1
+        print("shownViews = {}".format(shownViews))
+        if shownViews < 1:
+            print("Elevation Mark No Views")
+            hideList.Add(element.Id)
+    if len(hideList) > 0:
+        try:
+            with revit.Transaction("Hide unplaced views"):
+                view.HideElements(hideList)
+        except Exception as e:
+            print(e)
+
+def UnhideViewTags(view=None, doc=None):
+    if doc is None:
+        doc = HOST_APP.doc
+    if view is None:
+        view = doc.ActiveView
+    categoryList = (
+        DB.BuiltInCategory.OST_Viewers, 
+        DB.BuiltInCategory.OST_Elev
+    )
+    categoriesTyped = List[DB.BuiltInCategory](categoryList)
+    categoryFilter = DB.ElementMulticategoryFilter(categoriesTyped)
+    viewElements = DB.FilteredElementCollector(doc)\
+        .WhereElementIsNotElementType()\
+        .WherePasses(categoryFilter)\
+        .ToElements()
+    
+    hiddenElements = List[DB.ElementId]()
+    [hiddenElements.Add(e.Id) for e in viewElements if e.IsHidden(view)]
+    with revit.Transaction("Unhide view tags"):
+        view.UnhideElements(hiddenElements)
