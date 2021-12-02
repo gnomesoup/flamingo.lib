@@ -315,7 +315,7 @@ def DoorRenameByRoomNumber(
                             mark = "{}{}".format(
                                 values["roomNumber"], ascii_uppercase[j]
                             )
-                            print("{}: {} {} rad | {} ratio".format(mark, doorVector, angle, angleNormalized))
+                            # print("{}: {} {} rad | {} ratio".format(mark, doorVector, angle, angleNormalized))
                         else:
                             mark = values["roomNumber"]
                         markParameter = door.get_Parameter(
