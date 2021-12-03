@@ -404,20 +404,13 @@ def HideUnplacedViewTags(view=None, doc=None):
         )
         if sheetNumberParam and sheetNumberParam.AsString() == "-":
             hideList.Add(element.Id)
-            print("Elevation Mark No Sheet")
             continue
         dependentElementIds = element.GetDependentElements(elementFilter)
         shownViews = len(dependentElementIds)
-        print(element.Name)
-        print(sheetNumberParam.AsString())
-        print("shownViews = {}".format(shownViews))
         for dependentElementId in dependentElementIds:
             if dependentElementId.IntegerValue not in viewerIds:
-                print("Not in viewers list")
                 shownViews = shownViews - 1
-        print("shownViews = {}".format(shownViews))
         if shownViews < 1:
-            print("Elevation Mark No Views")
             hideList.Add(element.Id)
     if len(hideList) > 0:
         try:
