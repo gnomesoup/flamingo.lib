@@ -1,4 +1,4 @@
-from flamingo.geometry import GetMinMaxPoints, GetMidPoint
+from flamingo.geometry import GetMidPoint, MakeSolid
 from math import atan2, pi
 from pyrevit import clr, DB, HOST_APP, forms, revit
 from os import path
@@ -439,3 +439,93 @@ def UnhideViewTags(view=None, doc=None):
     [hiddenElements.Add(e.Id) for e in viewElements if e.IsHidden(view)]
     with revit.Transaction("Unhide view tags"):
         view.UnhideElements(hiddenElements)
+
+def GetViewPhase(view, doc=None):
+    if doc is None:
+        doc = HOST_APP.doc
+
+    viewPhaseParameter = view.get_Parameter(
+        DB.BuiltInParameter.VIEW_PHASE
+    )
+    viewPhaseId = viewPhaseParameter.AsElementId()
+    return doc.GetElement(viewPhaseId)
+
+def GetElementRoom(element, phase, offset=1.0, projectToLevel = True, doc=None):
+    """Find the room in a Revit model that a element is placed in or near.
+    The function should find the room if it is located above or within a
+    specified offset
+
+    Args:
+        element (DB.FamilyInstance): Element who's room is to be located
+        phase (DB.Phase): The phase of the room that is to be
+            matched to the element.
+        offset (float, optional): Offset to provide the the room geometry. This
+            allows for fuzzy matching of rooms that are close to the element
+            but that the element is not directly located in. Defaults to 1.0.
+        projectToLevel (bool, optional): If set to true, the boundary of the
+            element will be expanded down to the level the object is associated.
+            This is helpful for elements that may sit above the 3D extent of a
+            room like a diffuser.
+        doc (DB.Document, optional): The document in which the element is
+            located. Defaults to None.
+
+    Returns:
+        DB.Room: Room in the Revit model to which the element is matched.
+    """
+    if doc is None:
+        doc = HOST_APP.doc
+    
+    room = (element.Room)[phase]
+    if room is not None:
+        return room
+
+    elementBoundingBox = element.get_BoundingBox(None)
+    if not elementBoundingBox.Enabled:
+        print("Bounding Box Not Enabled")
+        return
+
+    elementOutline = DB.Outline(
+        elementBoundingBox.Min.Add(
+            DB.XYZ(-1.0 * offset, -1.0 * offset, -1.0 * offset)
+        ),
+        elementBoundingBox.Max.Add(DB.XYZ(offset, offset, offset))
+    )
+
+    if projectToLevel:
+        elementLevel = doc.GetElement(element.LevelId)
+        levelElevation = elementLevel.Elevation
+        elementPoint = element.Location.Point
+        elementOutline.AddPoint(
+            DB.XYZ(elementPoint.X, elementPoint.Y, levelElevation)
+        )
+
+    boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(
+        elementOutline
+    )
+
+
+    rooms = DB.FilteredElementCollector(doc)\
+        .OfCategory(DB.BuiltInCategory.OST_Rooms)\
+        .WherePasses(boundingBoxIntersectsFilter)\
+        .ToElements()
+    elementSolid = MakeSolid(
+        elementOutline.MinimumPoint, elementOutline.MaximumPoint
+    )
+    matchedRoom = None
+    maxVolume = 0
+    for room in rooms:
+        solids = [
+            geometryElement for geometryElement
+            in room.get_Geometry(DB.Options())
+            if type(geometryElement) == DB.Solid
+        ]
+        interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
+            solids[0],
+            elementSolid,
+            DB.BooleanOperationsType.Intersect
+        )
+        if abs(interSolid.Volume > 0.000001):
+            if interSolid.Volume > maxVolume:
+                maxVolume = interSolid.Volume
+                matchedRoom = room
+    return matchedRoom
