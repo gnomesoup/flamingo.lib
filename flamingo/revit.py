@@ -491,7 +491,7 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel = True, doc=None):
         elementBoundingBox.Max.Add(DB.XYZ(offset, offset, offset))
     )
 
-    if projectToLevel:
+    if projectToLevel and element.Location is not None:
         elementLevel = doc.GetElement(element.LevelId)
         levelElevation = elementLevel.Elevation
         elementPoint = element.Location.Point
@@ -529,3 +529,47 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel = True, doc=None):
                 maxVolume = interSolid.Volume
                 matchedRoom = room
     return matchedRoom
+
+def GetScheduledParameterIds(scheduleView):
+    """Get the ids of the parameters that have been added to the provided
+    schedule
+
+    Args:
+        scheduleView (DB.ViewSchedule): Schedule who's parameter ids are to be
+            collected
+
+    Returns:
+        list[DB.ElementId] or None: List of parameter ids found in the schedule
+    """
+    fieldOrder = scheduleView.Definition.GetFieldOrder()
+    fields = [
+        scheduleView.Definition.GetField(fieldId) for fieldId in fieldOrder
+        if fieldId is not None
+    ]
+    return [field.ParameterId for field in fields]
+
+def GetScheduledParameterByName(scheduleView, parameterName, doc=None):
+    """Gets a parameter included in the provided schedule by name. This just
+    grabs the first parameter with the provided name. It may cause issues if
+    multiple parameters with the same name are scheduled.
+
+    Args:
+        scheduleView (DB.ViewSchedule): Schedule view to search for parameter
+        parameterName (str): Name of the parameter
+        doc (DB.Document, optional): Revit document that hosts the parameter.
+            Defaults to None.
+
+    Returns:
+        DB.Parameter: Revit parameter with the provided name
+    """
+    if doc is None:
+        doc = HOST_APP.doc
+    parameterIds = GetScheduledParameterIds(scheduleView=scheduleView)
+    parameters = [doc.GetElement(parameterId) for parameterId in parameterIds]
+    parameterMap = {
+        parameter.Name: parameter for parameter in parameters
+    }
+    if parameterName in parameterMap:
+        return parameterMap[parameterName]
+    else:
+        return None
