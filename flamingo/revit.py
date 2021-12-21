@@ -568,6 +568,7 @@ def GetScheduledParameterByName(scheduleView, parameterName, doc=None):
     parameters = [doc.GetElement(parameterId) for parameterId in parameterIds]
     parameterMap = {
         parameter.Name: parameter for parameter in parameters
+        if parameter is not None
     }
     if parameterName in parameterMap:
         return parameterMap[parameterName]
