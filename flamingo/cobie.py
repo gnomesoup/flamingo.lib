@@ -19,6 +19,14 @@ def SetCOBieParameter(element, parameterName, value, blankOnly=False):
             updated.
     """
     spaceParameter = element.LookupParameter(parameterName)
+    currentvalue = spaceParameter.asstring()
+    if currentvalue != value:
+        output = script.get_output()
+        print(
+            "{} {} != {}".format(
+                output.linkify(element.id), currentvalue, value
+            )
+        )
     if blankOnly:
         currentValue = spaceParameter.AsString()
         if currentValue is not None and currentValue != "":
@@ -74,7 +82,7 @@ def SetCOBieComponentSpace(view, blankOnly, doc=None):
     with revit.Transaction("Set COBie.Component.Space"):
         for element in elements:
             parameter = element.LookupParameter("COBie")
-            if parameter.AsInteger < 1:
+            if parameter.AsInteger() < 1:
                 continue
             room = GetElementRoom(
                 element=element,
@@ -86,13 +94,11 @@ def SetCOBieComponentSpace(view, blankOnly, doc=None):
             SetCOBieParameter(
                 element,
                 "COBie.Component.Space",
-                GetElementRoom(
-                    element, phase, doc=doc
-                ).Number,
+                room.Number
             )
     return
 
-def COBieComponentSetDescription(view, doc=None):
+def COBieComponentSetDescription(view, blankOnly=True, doc=None):
     if doc is None:
         doc = HOST_APP.doc
     elements = DB.FilteredElementCollector(doc, view.Id)\
@@ -112,10 +118,11 @@ def COBieComponentSetDescription(view, doc=None):
                 if (
                     elementDescription.AsString() == "" or
                     elementDescription.AsString() == None or
-                    selection == "All Values"
+                    not blankOnly
                 ):
-                    elementDescription.Set(description)
+                    elementDescription.Set(description.replace("_", " "))
                     outElements.append(element)
+    return outElements
 
 def COBieComponentAssignMarks(view, doc=None):
     if doc is None:
@@ -155,12 +162,24 @@ def COBieComponentAssignMarks(view, doc=None):
                         break
             
 def COBieParameterBlankOut(scheduleList, doc=None):
+    """Clears values for selected COBie paramaters. This is helpful for values
+    that are not required at particular time points, like Manufacture at the CD
+    project phase.
+
+    Args:
+        scheduleList (list[DB.ViewSchedule]): List of schedules to operate on
+        doc (DB.Document, optional): Revit document that hosts the parameters to
+            be blanked out. Defaults to None.
+    """
+    # TODO Only attempt to change a family symbol once
+    # TODO Only operate on elements that have the "COBie" or "COBie.Type"
+    #      parameters checked
     if doc is None:
         doc = HOST_APP.doc
     scheduledParameters = {}
     groupedParameterNames = {}
     for schedule in scheduleList:
-        parameterIds = GetScheduledParameterIds(scheduleView, doc=doc)
+        parameterIds = GetScheduledParameterIds(schedule)
         parameterNames = []
         for parameterId in parameterIds:
             if parameterId is not None and parameterId.IntegerValue > 0:
