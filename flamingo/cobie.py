@@ -19,12 +19,12 @@ def SetCOBieParameter(element, parameterName, value, blankOnly=False):
             updated.
     """
     spaceParameter = element.LookupParameter(parameterName)
-    currentvalue = spaceParameter.asstring()
+    currentvalue = spaceParameter.AsString()
     if currentvalue != value:
         output = script.get_output()
         print(
             "{} {} != {}".format(
-                output.linkify(element.id), currentvalue, value
+                output.linkify(element.Id), currentvalue, value
             )
         )
     if blankOnly:
@@ -82,20 +82,23 @@ def SetCOBieComponentSpace(view, blankOnly, doc=None):
     with revit.Transaction("Set COBie.Component.Space"):
         for element in elements:
             parameter = element.LookupParameter("COBie")
-            if parameter.AsInteger() < 1:
-                continue
-            room = GetElementRoom(
-                element=element,
-                phase=phase,
-                doc=doc
-            )
-            if room is None:
-                continue
-            SetCOBieParameter(
-                element,
-                "COBie.Component.Space",
-                room.Number
-            )
+            try:
+                if parameter.AsInteger() < 1:
+                    continue
+                room = GetElementRoom(
+                    element=element,
+                    phase=phase,
+                    doc=doc
+                )
+                if room is None:
+                    continue
+                SetCOBieParameter(
+                    element,
+                    "COBie.Component.Space",
+                    room.Number
+                )
+            except Exception as e:
+                print("102: {}".format(e))
     return
 
 def COBieComponentSetDescription(view, blankOnly=True, doc=None):
