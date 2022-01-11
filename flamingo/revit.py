@@ -12,11 +12,14 @@ def GetParameterFromProjectInfo(doc, parameterName):
     """
     Returns a parameter value from the Project Information category by name.
     """
-    projectInformation = DB.FilteredElementCollector(doc) \
-        .OfCategory(DB.BuiltInCategory.OST_ProjectInformation) \
-        .ToElements()
-    parameterValue = projectInformation[0].LookupParameter(parameterName)\
-        .AsString()
+    try:
+        projectInformation = DB.FilteredElementCollector(doc) \
+            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation) \
+            .ToElements()
+        parameterValue = projectInformation[0].LookupParameter(parameterName)\
+            .AsString()
+    except:
+        return None
     return parameterValue
 
 def SetNoteBlockProperties(scheduleView,
