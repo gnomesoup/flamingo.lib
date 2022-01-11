@@ -59,14 +59,18 @@ def GetWorksheetData(worksheet, group=False, skip=0):
         dict
     """
 
-    lastRow = worksheet.UsedRange.Rows.Count
-    lastColumn = worksheet.UsedRange.Columns.Count
+    rowIndexes = [row.Row for row in worksheet.UsedRange.Rows]
+    lastRow = rowIndexes[-1]
     groupSort = 0
     groupName = None
     sheetValues = {
-        "rowCount": lastRow,
-        "columnCount": lastColumn
+        "rowCount": worksheet.UsedRange.Rows.Count,
+        "columnCount": worksheet.UsedRange.Columns.Count
     }
+    columnIndexes = [column.Column for column in worksheet.UsedRange.Columns]
+    # for column in worksheet.UsedRange.Columns:
+    #     print(column.Column)
+    #     print(column.ColumnWidth)
     for i in range(skip + 1, lastRow + 1):
         metaValues = {
             "Sort Name": groupName,
@@ -76,7 +80,7 @@ def GetWorksheetData(worksheet, group=False, skip=0):
         rowValues = []
         sortRow = False
         cellValue = None
-        for j in range(1, lastColumn + 1):
+        for j in columnIndexes:
             cellValue = worksheet.Cells[i,j].Text
             if cellValue not in [None, ""]:
                 if j == 1 and group:
