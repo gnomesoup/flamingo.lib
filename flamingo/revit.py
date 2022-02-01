@@ -39,7 +39,6 @@ def SetParameterFromProjectInfo(doc, parameterName, parameterValue):
 
 def SetNoteBlockProperties(scheduleView,
                            viewName,
-                           familyInstance,
                            metaParameterNameList,
                            columnNameList,
                            headerNames=None,
