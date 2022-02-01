@@ -81,13 +81,14 @@ def SetNoteBlockProperties(scheduleView,
     scheduleView.Name = viewName
     scheduleDefinition = scheduleView.Definition
     scheduleDefinition.ClearFields()
+    schedulableFields = GetSchedulableFields(scheduleView)
     fields = {}
     for i in range(len(parameterNameList)):
-        parameter = familyInstance.LookupParameter(parameterNameList[i])
-        if parameter:
-            schedulableField = DB.SchedulableField(
-                DB.ScheduleFieldType.Instance,
-                parameter.Id)
+        parameterName = parameterNameList[i]
+        print("parameterName = {}".format(parameterName))
+        if parameterName in schedulableFields:
+            print("In Dict")
+            schedulableField = schedulableFields[parameterName]
             newField = scheduleDefinition.AddField(schedulableField)
             if headerNames:
                 if headerNameList[i]:
@@ -98,6 +99,17 @@ def SetNoteBlockProperties(scheduleView,
                 newField.GridColumnWidth = columnWidthList[i]
             fields[parameterNameList[i]] = newField
     return scheduleView
+
+def GetSchedulableFields(viewSchedule):
+    fields = {}
+    scheduleDefinition = viewSchedule.Definition
+    for field in scheduleDefinition.GetSchedulableFields():
+        parameterId = field.ParameterId
+        if parameterId is not None:
+            parameter = viewSchedule.Document.GetElement(parameterId)
+            if parameter:
+                fields[parameter.Name] = field
+    return fields
 
 def GetScheduleFields(viewSchedule):
     """
