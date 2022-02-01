@@ -1,6 +1,6 @@
 from Autodesk.Revit import DB
 from flamingo.revit import GetViewPhase, GetElementRoom
-from flamingo.revit import GetScheduledParameterIds
+from flamingo.revit import GetScheduledParameterIds, GetScheduledParameterByName
 from pyrevit import forms, HOST_APP, revit, script
 
 def SetCOBieParameter(element, parameterName, value, blankOnly=False):
@@ -231,3 +231,149 @@ def COBieParameterBlankOut(scheduleList, doc=None):
 
                 elementParameter = element.get_Parameter(parameter.GuidValue)
                 elementParameter.Set("")
+
+def COBieUncheckAll(typeViewSchedule, componentViewSchedule, doc=None):
+    if doc is None:
+        doc = HOST_APP.doc
+
+    print("Collecting COBie Type elements")
+    cobieTypeParameter = GetScheduledParameterByName(
+        typeViewSchedule,
+        "COBie.Type",
+        doc
+    )
+    cobieTypes = DB.FilteredElementCollector(doc)\
+        .WhereElementIsElementType()\
+        .WherePasses(
+            DB.ElementParameterFilter(
+                DB.HasNoValueFilterRule(cobieTypeParameter.Id)
+            )
+        ).ToElements()
+    
+    print("len(cobieTypes) = {}".format(len(cobieTypes)))
+    print("")
+    print("Collecting COBie Instance elements")
+    cobieParameter = GetScheduledParameterByName(
+        componentViewSchedule,
+        "COBie",
+        doc
+    )
+    hasNoValueFilterRule = DB.HasNoValueFilterRule(cobieParameter.Id)
+    elementParameterFilter = DB.ElementParameterFilter(
+        hasNoValueFilterRule
+    )
+    cobieInstances = DB.FilteredElementCollector(doc)\
+        .WhereElementIsNotElementType()\
+        .WherePasses(
+            DB.ElementParameterFilter(
+                DB.HasNoValueFilterRule(cobieParameter.Id)
+            )
+        ).ToElements()
+    print("len(cobieInstances) = {}".format(len(cobieInstances)))
+    print("")
+    print("Setting COBie Type elements")
+
+    progressMax = len(cobieTypes) + len(cobieInstances)
+    progress = 0
+    unsetElements = []
+    with revit.TransactionGroup(
+        "Uncheck COBie & COBie.Type Checkboxes",
+    ):
+        with forms.ProgressBar() as pb:
+            with revit.Transaction(
+                "Type Parmaeter Set",
+                swallow_errors=True,
+                show_error_dialog=False,
+                # nested=True
+            ) as t:
+                for element in cobieTypes:
+                    progress += 1
+                    pb.update_progress(progress, progressMax)
+                    try:
+                        parameter = element.get_Parameter(cobieTypeParameter.GuidValue)
+                        # parameter.HasValue = True
+                        parameter.Set(0)
+                    except Exception as e:
+                        print("{}: {}".format(e, element.Id))
+                        unsetElements.append(element)
+            with revit.Transaction(
+                "Type Parmaeter Set",
+                swallow_errors=True,
+                show_error_dialog=False,
+                # nested=True
+            ) as t:
+                for element in cobieInstances:
+                    progress += 1
+                    pb.update_progress(progress, progressMax)
+                    try:
+                        parameter = element.get_Parameter(cobieParameter.GuidValue)
+                        parameter.Set(0)
+                    except Exception as e:
+                        print("{}: {}".format(e, element.Id))
+                        unsetElements.append(element)
+    return unsetElements
+
+def COBieTypeIsEnabled(element):
+    parameter = element.LookupParameter("COBie.Type")
+    try:
+        assert parameter.AsInteger() > 0
+        return True
+    except (AssertionError, AttributeError):
+        return False
+
+def COBieEnable(element):
+    parameter = element.LookupParameter("COBie")
+    parameter.Set(True)
+
+def GetElementSymbol(element):
+    if type(element) == DB.Wall:
+        return element.WallType
+    else:
+        return element.Symbol
+
+def COBieComponentAutoSelect(view, doc=None):
+    if doc is None:
+        doc = HOST_APP.doc
+
+    elements = DB.FilteredElementCollector(doc, view.Id)\
+        .WhereElementIsNotElementType()\
+        .ToElements()
+    familySymbolIds = set()
+    for element in elements:
+        try:
+            symbol = GetElementSymbol(element)
+            if COBieTypeIsEnabled(symbol):
+                familySymbolIds.add(symbol.Id)
+        except Exception as e:
+            print("{}: {}".format(element.Id.IntegerValue, e)) 
+        
+    componentView = DB.FilteredElementCollector(doc)\
+        .OfClass(DB.ViewSchedule)\
+        .WhereElementIsNotElementType()\
+        .Where(lambda x: x.Name == "COBie.Component").First()
+    componentElements = DB.FilteredElementCollector(doc, componentView.Id)\
+        .ToElements()
+    for element in componentElements:
+        parameter = element.LookupParameter("COBie")
+        try:
+            if parameter.AsInteger() > 0:
+                symbol = GetElementSymbol(element)
+                if symbol.Id not in familySymbolIds:
+                    parameter.Set(0)
+        except AttributeError:
+            continue
+
+    with revit.Transaction("Enable COBie.Component Components"):
+        
+        for symbolId in familySymbolIds:
+            symbolInstances = DB.FilteredElementCollector(doc)\
+                .WhereElementIsNotElementType()\
+                .WherePasses(
+                    DB.FamilyInstanceFilter(doc, symbolId)
+                )\
+                .ToElements()
+            for instance in symbolInstances:
+                print("instance.Group = {}".format(instance.Group))
+                parameter = instance.LookupParameter("COBie")
+                parameter.Set(1)
+    return

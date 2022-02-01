@@ -22,6 +22,21 @@ def GetParameterFromProjectInfo(doc, parameterName):
         return None
     return parameterValue
 
+def SetParameterFromProjectInfo(doc, parameterName, parameterValue):
+    """
+    Set a parameter value from the Project Information category by name.
+    """
+    if True:
+    # try:
+        projectInformation = DB.FilteredElementCollector(doc) \
+            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation) \
+            .ToElements()
+        parameter = projectInformation[0].LookupParameter(parameterName)
+        parameter.Set(parameterValue)
+    # except:
+    #     return None
+    return parameter
+
 def SetNoteBlockProperties(scheduleView,
                            viewName,
                            familyInstance,
