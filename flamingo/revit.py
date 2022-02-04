@@ -84,9 +84,7 @@ def SetNoteBlockProperties(scheduleView,
     fields = {}
     for i in range(len(parameterNameList)):
         parameterName = parameterNameList[i]
-        print("parameterName = {}".format(parameterName))
         if parameterName in schedulableFields:
-            print("In Dict")
             schedulableField = schedulableFields[parameterName]
             newField = scheduleDefinition.AddField(schedulableField)
             if headerNames:
