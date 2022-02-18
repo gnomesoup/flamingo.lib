@@ -601,3 +601,23 @@ def GetScheduledParameterByName(scheduleView, parameterName, doc=None):
         return parameterMap[parameterName]
     else:
         return None
+
+def UngroupAllGroups(
+    includeDetailGroups=True, includeModelGroups=True, doc=None
+):
+    doc = doc or HOST_APP.doc
+    builtInCategories = List[DB.BuiltInCategory]()
+    if includeModelGroups:
+        builtInCategories.Add(DB.BuiltInCategory.OST_IOSModelGroups)
+    if includeDetailGroups:
+        builtInCategories.Add(DB.BuiltInCategory.OST_IOSDetailGroups)
+    if not builtInCategories:
+        return
+    multiCategoryFilter = DB.ElementMulticategoryFilter(builtInCategories)
+    groups = DB.FilteredElementCollector(doc) \
+        .WherePasses(multiCategoryFilter) \
+        .WhereElementIsNotElementType() \
+        .ToElements()
+    groupTypes = set(group.GroupType for group in groups)
+    [group.UngroupMembers() for group in groups]
+    return groupTypes
