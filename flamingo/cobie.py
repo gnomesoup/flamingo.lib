@@ -1,6 +1,7 @@
 from Autodesk.Revit import DB
 from flamingo.revit import GetViewPhase, GetElementRoom
 from flamingo.revit import GetScheduledParameterIds, GetScheduledParameterByName
+from flamingo.revit import GetParameterFromProjectInfo
 from pyrevit import forms, HOST_APP, revit, script
 
 def SetCOBieParameter(element, parameterName, value, blankOnly=False):
@@ -18,22 +19,20 @@ def SetCOBieParameter(element, parameterName, value, blankOnly=False):
         DB.Element: Returns the element regardless of whether the value was
             updated.
     """
-    spaceParameter = element.LookupParameter(parameterName)
-    currentvalue = spaceParameter.AsString()
-    if currentvalue != value:
-        output = script.get_output()
-        print(
-            "{} {} != {}".format(
-                output.linkify(element.Id), currentvalue, value
-            )
-        )
+    cobieParameter = element.LookupParameter(parameterName)
+    # currentvalue = cobieParameter.AsString()
+    # if currentvalue != value:
+    #     output = script.get_output()
+    #     print(
+    #         "{} {} != {}".format(
+    #             output.linkify(element.Id), currentvalue, value
+    #         )
+    #     )
     if blankOnly:
-        currentValue = spaceParameter.AsString()
+        currentValue = cobieParameter.AsString()
         if currentValue is not None and currentValue != "":
             return element
-        else:
-            print("Blank Value!")
-    spaceParameter.Set(value)
+    cobieParameter.Set(value)
     return element
 
 def COBieParameterIsBlank(element, parameterName):
@@ -98,7 +97,7 @@ def SetCOBieComponentSpace(view, blankOnly, doc=None):
                     room.Number
                 )
             except Exception as e:
-                print("102: {}".format(e))
+                print("Error: {}".format(e))
     return
 
 def COBieComponentSetDescription(view, blankOnly=True, doc=None):
@@ -147,9 +146,10 @@ def COBieComponentAssignMarks(view, doc=None):
                     doc, element.Symbol.Id
                 )
                 instances = DB.FilteredElementCollector(doc, view.Id)\
-                    .WherePasses(familyInstanceFilter)
+                    .WherePasses(familyInstanceFilter) \
+                    .ToElements()
                 marks[symbolId] = {
-                    "count": instances.Count(),
+                    "count": len(instances),
                     "marks": []
                 }
             markParameter = element.get_Parameter(
@@ -312,6 +312,14 @@ def COBieUncheckAll(typeViewSchedule, componentViewSchedule, doc=None):
                         print("{}: {}".format(e, element.Id))
                         unsetElements.append(element)
     return unsetElements
+
+def COBieIsEnabled(element):
+    parameter = element.LookupParameter("COBie")
+    try:
+        assert parameter.AsInteger() > 0
+        return True
+    except (AssertionError, AttributeError):
+        return False
 
 def COBieTypeIsEnabled(element):
     parameter = element.LookupParameter("COBie.Type")
