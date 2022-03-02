@@ -689,7 +689,6 @@ def COBieParametersToCDX(doc=None):
     componentParameters = [
         item for item in CDX_PARAMETER_MAP if item["type"] == "Component"
     ]
-    print(componentParameters)
 
     with revit.Transaction("Set CDX from COBie"):
         authParameter = projectInformation.get_Parameter(
@@ -761,7 +760,6 @@ def COBieParametersToCDX(doc=None):
             )
             for instanceId in instanceIds:
                 element = doc.GetElement(instanceId)
-                print(revit.query.get_name(element))
                 if COBieIsEnabled(element):
                     for item in componentParameters:
                         cobieName = item["cobie"]
