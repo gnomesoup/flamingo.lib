@@ -4,46 +4,54 @@ from pyrevit import clr, DB, HOST_APP, forms, revit
 from os import path
 from string import ascii_uppercase
 import re
+import System
 
-clr.AddReference("System")
 from System.Collections.Generic import List
+
 
 def GetParameterFromProjectInfo(doc, parameterName):
     """
     Returns a parameter value from the Project Information category by name.
     """
     try:
-        projectInformation = DB.FilteredElementCollector(doc) \
-            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation) \
+        projectInformation = (
+            DB.FilteredElementCollector(doc)
+            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
             .ToElements()
-        parameterValue = projectInformation[0].LookupParameter(parameterName)\
-            .AsString()
+        )
+        parameterValue = projectInformation[0].LookupParameter(parameterName).AsString()
     except:
         return None
     return parameterValue
+
 
 def SetParameterFromProjectInfo(doc, parameterName, parameterValue):
     """
     Set a parameter value from the Project Information category by name.
     """
     if True:
-    # try:
-        projectInformation = DB.FilteredElementCollector(doc) \
-            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation) \
+        # try:
+        projectInformation = (
+            DB.FilteredElementCollector(doc)
+            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
             .ToElements()
+        )
         parameter = projectInformation[0].LookupParameter(parameterName)
         parameter.Set(parameterValue)
     # except:
     #     return None
     return parameter
 
-def SetNoteBlockProperties(scheduleView,
-                           viewName,
-                           metaParameterNameList,
-                           columnNameList,
-                           headerNames=None,
-                           columnWidthList=None,
-                           columnFormatList=None):
+
+def SetNoteBlockProperties(
+    scheduleView,
+    viewName,
+    metaParameterNameList,
+    columnNameList,
+    headerNames=None,
+    columnWidthList=None,
+    columnFormatList=None,
+):
     """
     Set the name, fields, and filter of a schedule view to make is show the
     data that was assigned to the generic annoation family
@@ -65,7 +73,7 @@ def SetNoteBlockProperties(scheduleView,
     columnWidthList : list(float)
         List of column widths in feet
     columnFormatList: Reserved
-    
+
     Returns
     -------
     DB.ViewSchedule
@@ -75,8 +83,7 @@ def SetNoteBlockProperties(scheduleView,
     if headerNames:
         headerNameList = metaParameterNameList + headerNames
     if columnWidthList:
-        columnWidthList = ([1/12.0] * len(metaParameterNameList))\
-            + columnWidthList
+        columnWidthList = ([1 / 12.0] * len(metaParameterNameList)) + columnWidthList
     scheduleView.Name = viewName
     scheduleDefinition = scheduleView.Definition
     scheduleDefinition.ClearFields()
@@ -97,6 +104,7 @@ def SetNoteBlockProperties(scheduleView,
             fields[parameterNameList[i]] = newField
     return scheduleView
 
+
 def GetSchedulableFields(viewSchedule):
     fields = {}
     scheduleDefinition = viewSchedule.Definition
@@ -107,6 +115,7 @@ def GetSchedulableFields(viewSchedule):
             if parameter:
                 fields[parameter.Name] = field
     return fields
+
 
 def GetScheduleFields(viewSchedule):
     """
@@ -124,6 +133,7 @@ def GetScheduleFields(viewSchedule):
         field = scheduleDefinition.GetField(scheduleId)
         fields[field.GetName()] = field
     return fields
+
 
 def MarkModelTransmitted(filepath, isTransmitted=True):
     """
@@ -145,22 +155,24 @@ def MarkModelTransmitted(filepath, isTransmitted=True):
     transmissionData.WriteTransmissionData(modelPath, transmissionData)
     return
 
+
 def GetModelFilePath(doc, promptIfBlank=True):
     if doc.IsWorkshared:
         revitModelPath = doc.GetWorksharingCentralModelPath()
-        revitModelPath = DB.ModelPathUtils\
-            .ConvertModelPathToUserVisiblePath(revitModelPath)
+        revitModelPath = DB.ModelPathUtils.ConvertModelPathToUserVisiblePath(
+            revitModelPath
+        )
     else:
         revitModelPath = doc.PathName
     if not revitModelPath and promptIfBlank:
-        forms.alert("Please save the model and try again.",
-            exitscript=True)
-    uncReg = re.compile(re.escape("\\\\wha-server02\\projects"),
-        re.IGNORECASE)
+        forms.alert("Please save the model and try again.", exitscript=True)
+    uncReg = re.compile(re.escape("\\\\wha-server02\\projects"), re.IGNORECASE)
     return uncReg.sub("x:", revitModelPath)
+
 
 def GetModelDirectory(doc):
     return path.dirname(GetModelFilePath(doc))
+
 
 def GetPhase(phaseName, doc=None):
     if doc is None:
@@ -171,10 +183,9 @@ def GetPhase(phaseName, doc=None):
             return phase
     return None
 
+
 def OpenDetached(filePath, audit=False, preserveWorksets=True):
-    modelPath = DB.ModelPathUtils.ConvertUserVisiblePathToModelPath(
-        filePath
-    )
+    modelPath = DB.ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath)
     openOptions = DB.OpenOptions()
     if preserveWorksets:
         detachOption = DB.DetachFromCentralOption.DetachAndPreserveWorksets
@@ -184,6 +195,7 @@ def OpenDetached(filePath, audit=False, preserveWorksets=True):
     openOptions.Audit = True
     doc = HOST_APP.app.OpenDocumentFile(modelPath, openOptions)
     return doc
+
 
 def SaveAsCentral(doc, centralPath):
     saveAsOptions = DB.SaveAsOptions()
@@ -195,9 +207,9 @@ def SaveAsCentral(doc, centralPath):
     DB.Document.SaveAs(doc, centralPath, saveAsOptions)
     relinquishOptions = DB.RelinquishOptions(True)
     transactionOptions = DB.TransactWithCentralOptions()
-    DB.WorksharingUtils.RelinquishOwnership(doc, relinquishOptions,
-                                            transactionOptions)
+    DB.WorksharingUtils.RelinquishOwnership(doc, relinquishOptions, transactionOptions)
     return doc
+
 
 def DoorRenameByRoomNumber(
     doors,
@@ -214,13 +226,13 @@ def DoorRenameByRoomNumber(
         phase (DB.Phases): Phase to use when getting room property.
         prefix (str, optional): String to append to beinging of door number.
             Defaults to None.
-        seperator (str, optional): String to place between door number and 
+        seperator (str, optional): String to place between door number and
             suffix. Defaults to None.
         suffixList (list[str], optional): List of strings to append to the end
             of doors located in the same room. Defaults to and uppercase letters
             in alphabetical order.
         doc (DB.Document, optional): [description]. Defaults to None.
-    
+
     Returns:
         list[DB.Elements]: list of renumbered doors
     """
@@ -233,10 +245,12 @@ def DoorRenameByRoomNumber(
     if suffixList is None:
         suffixList = ascii_uppercase
 
-    allDoors = DB.FilteredElementCollector(doc)\
-        .OfCategory(DB.BuiltInCategory.OST_Doors)\
-        .WhereElementIsNotElementType()\
+    allDoors = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_Doors)
+        .WhereElementIsNotElementType()
         .ToElements()
+    )
 
     # Make a dictionary of rooms with door properties
     roomDoors = {}
@@ -247,15 +261,17 @@ def DoorRenameByRoomNumber(
         toRoom = (door.ToRoom)[phase]
         if toRoom:
             if toRoom.Id in roomDoors:
-                roomDoors[toRoom.Id]["doors"] = \
-                    roomDoors[toRoom.Id]["doors"] + [door.Id]
+                roomDoors[toRoom.Id]["doors"] = roomDoors[toRoom.Id]["doors"] + [
+                    door.Id
+                ]
             else:
                 roomsToAdd.append(toRoom)
         fromRoom = (door.FromRoom)[phase]
         if fromRoom:
             if fromRoom.Id in roomDoors:
-                roomDoors[fromRoom.Id]["doors"] =\
-                    roomDoors[fromRoom.Id]["doors"] + [door.Id]
+                roomDoors[fromRoom.Id]["doors"] = roomDoors[fromRoom.Id]["doors"] + [
+                    door.Id
+                ]
             else:
                 roomsToAdd.append(fromRoom)
         for roomToAdd in roomsToAdd:
@@ -264,12 +280,10 @@ def DoorRenameByRoomNumber(
             roomDoors[roomToAdd.Id]["roomArea"] = roomToAdd.Area
             roomCenter = roomToAdd.Location.Point
             roomDoors[roomToAdd.Id]["roomLocation"] = roomCenter
- 
+
     # Make a dictionary of door connection counts. This will be used to
     # prioritize doors with more connections when assigning a letter value
-    roomDoorsDoors = [
-        value['doors'] for value in roomDoors.values()
-    ]
+    roomDoorsDoors = [value["doors"] for value in roomDoors.values()]
     doorConnectors = {}
     for door in allDoors:
         for i in roomDoorsDoors:
@@ -284,7 +298,7 @@ def DoorRenameByRoomNumber(
         roomDoors[key]["doorCount"] = len(values["doors"])
 
     # Number doors
-    doorCount=len(doors)
+    doorCount = len(doors)
     numberedDoors = set()
     with revit.Transaction("Renumber Doors"):
         i = 1
@@ -295,16 +309,14 @@ def DoorRenameByRoomNumber(
         while i <= maxLength:
             # avoid a loop by stoping at double the count of doors
             if n > nMax:
-            # if n > 4:
+                # if n > 4:
                 break
             noRooms = True
             roomsThisRound = [
-                roomId for roomId, value in roomDoors.items()
-                if value["doorCount"] == i
+                roomId for roomId, value in roomDoors.items() if value["doorCount"] == i
             ]
             roomsThisRound = sorted(
-                roomsThisRound,
-                key=lambda x: roomDoors[x]["roomArea"]
+                roomsThisRound, key=lambda x: roomDoors[x]["roomArea"]
             )
             # Go through each room and look for door counts that match
             # current level
@@ -315,15 +327,12 @@ def DoorRenameByRoomNumber(
                     noRooms = False
                     doorIds = values["doors"]
                     doorsToNumber = [
-                        doorId for doorId in doorIds
-                        if doorId not in numberedDoors
+                        doorId for doorId in doorIds if doorId not in numberedDoors
                     ]
                     # Go through all the doors connected to the room
                     # and give them a number
                     sortedDoorsToNumber = sorted(
-                        doorsToNumber,
-                        key=lambda x: doorConnectors[x],
-                        reverse=True
+                        doorsToNumber, key=lambda x: doorConnectors[x], reverse=True
                     )
                     for j, doorId in enumerate(sortedDoorsToNumber):
                         numberedDoors.add(doorId)
@@ -331,17 +340,12 @@ def DoorRenameByRoomNumber(
                         if len(doorsToNumber) > 1:
                             boundingBox = door.get_BoundingBox(None)
                             roomCenter = values["roomLocation"]
-                            doorCenter = GetMidPoint(
-                                boundingBox.Min,
-                                boundingBox.Max
-                            )
+                            doorCenter = GetMidPoint(boundingBox.Min, boundingBox.Max)
                             doorVector = doorCenter.Subtract(roomCenter)
                             angle = atan2(doorVector.Y, doorVector.X)
                             angleReversed = angle * -1.0
                             pi2 = pi * 2.0
-                            angleNormalized = (
-                                ((angleReversed + pi2 + 2) % pi2) / pi2
-                            )
+                            angleNormalized = ((angleReversed + pi2 + 2) % pi2) / pi2
                             mark = "{}{}".format(
                                 values["roomNumber"], ascii_uppercase[j]
                             )
@@ -353,16 +357,21 @@ def DoorRenameByRoomNumber(
                         )
                         markParameter.Set(mark)
             for roomId, values in roomDoors.items():
-                unNumberedDoors = filter(None, [
-                    doorId for doorId in values["doors"]
-                    if doorId not in numberedDoors
-                ])
+                unNumberedDoors = filter(
+                    None,
+                    [
+                        doorId
+                        for doorId in values["doors"]
+                        if doorId not in numberedDoors
+                    ],
+                )
                 roomDoors[roomId]["doors"] = unNumberedDoors
                 roomDoors[roomId]["doorCount"] = len(unNumberedDoors)
             if noRooms:
                 i += 1
             n += 1
     return doors
+
 
 def FilterByCategory(elements, builtInCategory):
     """Filters a list of Revit elements by a BuiltInCategory
@@ -375,9 +384,11 @@ def FilterByCategory(elements, builtInCategory):
         list[DB.Elements]: List of revit elements that matched the filter
     """
     return [
-        element for element in elements
+        element
+        for element in elements
         if element.Category.Id.IntegerValue == int(builtInCategory)
     ]
+
 
 def HideUnplacedViewTags(view=None, doc=None):
     """Hides all unreferenced view tags in the specified view by going through
@@ -400,15 +411,19 @@ def HideUnplacedViewTags(view=None, doc=None):
     if view is None:
         view = doc.ActiveView
 
-    viewers = DB.FilteredElementCollector(doc, view.Id) \
-        .OfCategory(DB.BuiltInCategory.OST_Viewers) \
-        .WhereElementIsNotElementType()\
+    viewers = (
+        DB.FilteredElementCollector(doc, view.Id)
+        .OfCategory(DB.BuiltInCategory.OST_Viewers)
+        .WhereElementIsNotElementType()
         .ToElements()
+    )
     viewerIds = [viewer.Id.IntegerValue for viewer in viewers]
-    elevs = DB.FilteredElementCollector(doc, view.Id) \
-        .OfCategory(DB.BuiltInCategory.OST_Elev) \
-        .WhereElementIsNotElementType() \
+    elevs = (
+        DB.FilteredElementCollector(doc, view.Id)
+        .OfCategory(DB.BuiltInCategory.OST_Elev)
+        .WhereElementIsNotElementType()
         .ToElements()
+    )
 
     # Go through all filtered elements to figure out if they have a sheet number
     # If they don't hide them by element
@@ -446,38 +461,38 @@ def HideUnplacedViewTags(view=None, doc=None):
         except Exception as e:
             print(e)
 
+
 def UnhideViewTags(view=None, doc=None):
     if doc is None:
         doc = HOST_APP.doc
     if view is None:
         view = doc.ActiveView
-    categoryList = (
-        DB.BuiltInCategory.OST_Viewers, 
-        DB.BuiltInCategory.OST_Elev
-    )
+    categoryList = (DB.BuiltInCategory.OST_Viewers, DB.BuiltInCategory.OST_Elev)
     categoriesTyped = List[DB.BuiltInCategory](categoryList)
     categoryFilter = DB.ElementMulticategoryFilter(categoriesTyped)
-    viewElements = DB.FilteredElementCollector(doc)\
-        .WhereElementIsNotElementType()\
-        .WherePasses(categoryFilter)\
+    viewElements = (
+        DB.FilteredElementCollector(doc)
+        .WhereElementIsNotElementType()
+        .WherePasses(categoryFilter)
         .ToElements()
-    
+    )
+
     hiddenElements = List[DB.ElementId]()
     [hiddenElements.Add(e.Id) for e in viewElements if e.IsHidden(view)]
     with revit.Transaction("Unhide view tags"):
         view.UnhideElements(hiddenElements)
 
+
 def GetViewPhase(view, doc=None):
     if doc is None:
         doc = HOST_APP.doc
 
-    viewPhaseParameter = view.get_Parameter(
-        DB.BuiltInParameter.VIEW_PHASE
-    )
+    viewPhaseParameter = view.get_Parameter(DB.BuiltInParameter.VIEW_PHASE)
     viewPhaseId = viewPhaseParameter.AsElementId()
     return doc.GetElement(viewPhaseId)
 
-def GetElementRoom(element, phase, offset=1.0, projectToLevel = True, doc=None):
+
+def GetElementRoom(element, phase, offset=1.0, projectToLevel=True, doc=None):
     """Find the room in a Revit model that a element is placed in or near.
     The function should find the room if it is located above or within a
     specified offset
@@ -501,7 +516,7 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel = True, doc=None):
     """
     if doc is None:
         doc = HOST_APP.doc
-    
+
     room = (element.Room)[phase]
     if room is not None:
         return room
@@ -512,50 +527,42 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel = True, doc=None):
         return
 
     elementOutline = DB.Outline(
-        elementBoundingBox.Min.Add(
-            DB.XYZ(-1.0 * offset, -1.0 * offset, -1.0 * offset)
-        ),
-        elementBoundingBox.Max.Add(DB.XYZ(offset, offset, offset))
+        elementBoundingBox.Min.Add(DB.XYZ(-1.0 * offset, -1.0 * offset, -1.0 * offset)),
+        elementBoundingBox.Max.Add(DB.XYZ(offset, offset, offset)),
     )
 
     if projectToLevel and element.Location is not None:
         elementLevel = doc.GetElement(element.LevelId)
         levelElevation = elementLevel.Elevation
         elementPoint = element.Location.Point
-        elementOutline.AddPoint(
-            DB.XYZ(elementPoint.X, elementPoint.Y, levelElevation)
-        )
+        elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, levelElevation))
 
-    boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(
-        elementOutline
-    )
+    boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(elementOutline)
 
-
-    rooms = DB.FilteredElementCollector(doc)\
-        .OfCategory(DB.BuiltInCategory.OST_Rooms)\
-        .WherePasses(boundingBoxIntersectsFilter)\
+    rooms = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_Rooms)
+        .WherePasses(boundingBoxIntersectsFilter)
         .ToElements()
-    elementSolid = MakeSolid(
-        elementOutline.MinimumPoint, elementOutline.MaximumPoint
     )
+    elementSolid = MakeSolid(elementOutline.MinimumPoint, elementOutline.MaximumPoint)
     matchedRoom = None
     maxVolume = 0
     for room in rooms:
         solids = [
-            geometryElement for geometryElement
-            in room.get_Geometry(DB.Options())
+            geometryElement
+            for geometryElement in room.get_Geometry(DB.Options())
             if type(geometryElement) == DB.Solid
         ]
         interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
-            solids[0],
-            elementSolid,
-            DB.BooleanOperationsType.Intersect
+            solids[0], elementSolid, DB.BooleanOperationsType.Intersect
         )
         if abs(interSolid.Volume > 0.000001):
             if interSolid.Volume > maxVolume:
                 maxVolume = interSolid.Volume
                 matchedRoom = room
     return matchedRoom
+
 
 def GetScheduledParameterIds(scheduleView):
     """Get the ids of the parameters that have been added to the provided
@@ -570,10 +577,12 @@ def GetScheduledParameterIds(scheduleView):
     """
     fieldOrder = scheduleView.Definition.GetFieldOrder()
     fields = [
-        scheduleView.Definition.GetField(fieldId) for fieldId in fieldOrder
+        scheduleView.Definition.GetField(fieldId)
+        for fieldId in fieldOrder
         if fieldId is not None
     ]
     return [field.ParameterId for field in fields]
+
 
 def GetScheduledParameterByName(scheduleView, parameterName, doc=None):
     """Gets a parameter included in the provided schedule by name. This just
@@ -594,17 +603,15 @@ def GetScheduledParameterByName(scheduleView, parameterName, doc=None):
     parameterIds = GetScheduledParameterIds(scheduleView=scheduleView)
     parameters = [doc.GetElement(parameterId) for parameterId in parameterIds]
     parameterMap = {
-        parameter.Name: parameter for parameter in parameters
-        if parameter is not None
+        parameter.Name: parameter for parameter in parameters if parameter is not None
     }
     if parameterName in parameterMap:
         return parameterMap[parameterName]
     else:
         return None
 
-def UngroupAllGroups(
-    includeDetailGroups=True, includeModelGroups=True, doc=None
-):
+
+def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None):
     doc = doc or HOST_APP.doc
     builtInCategories = List[DB.BuiltInCategory]()
     if includeModelGroups:
@@ -614,10 +621,12 @@ def UngroupAllGroups(
     if not builtInCategories:
         return
     multiCategoryFilter = DB.ElementMulticategoryFilter(builtInCategories)
-    groups = DB.FilteredElementCollector(doc) \
-        .WherePasses(multiCategoryFilter) \
-        .WhereElementIsNotElementType() \
+    groups = (
+        DB.FilteredElementCollector(doc)
+        .WherePasses(multiCategoryFilter)
+        .WhereElementIsNotElementType()
         .ToElements()
+    )
     groupTypes = set(group.GroupType for group in groups)
     [group.UngroupMembers() for group in groups]
     return groupTypes
