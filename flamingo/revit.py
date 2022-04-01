@@ -1,14 +1,61 @@
 from flamingo.geometry import GetMidPoint, MakeSolid
 from math import atan2, pi
-from pyrevit import clr, DB, HOST_APP, forms, revit
+from pyrevit import DB, HOST_APP, forms, PyRevitException, revit
 from os import path
 from string import ascii_uppercase
 import re
-import System
 
 from System.Collections.Generic import List
 
 
+def CreateProjectParameter(
+    parameterName,
+    sharedParameterGroupName,
+    revitCategories,
+    parameterGroup,
+    sharedParametersFilename=None,
+    isTypeParameter=True,
+    doc=None,
+):
+    doc = doc or HOST_APP.doc
+    app = doc.Application
+
+    # Add the parameter to the model
+    # if the current shared parameters file is not the provide file, change it
+    originalFilename = app.SharedParametersFilename
+    sharedParametersFilename = sharedParametersFilename or originalFilename
+    if originalFilename != sharedParametersFilename:
+        if path.exists(sharedParametersFilename):
+            app.SharedParametersFilename = sharedParametersFilename
+        else:
+            PyRevitException(
+                "Could not located specified shared parameter file at {}".format(
+                    sharedParametersFilename
+                )
+            )
+
+    # Find the parameter in the paramters file
+    definitionsFile = app.OpenSharedParameterFile()
+    if not definitionsFile:
+
+        PyRevitException("Could not read from the shared parameters file")
+    definitionGroup = definitionsFile.Groups.get_Item(sharedParameterGroupName)
+    externalDefinition = definitionGroup.Definitions.get_Item(parameterName)
+
+    # Format Revit categories
+    categories = doc.Settings.Categories
+    categorySet = app.Create.NewCategorySet()
+    for revitCategory in revitCategories:
+        category = categories.get_Item(revitCategory)
+        categorySet.Insert(category)
+
+    # Create the parameter
+    if isTypeParameter:
+        newBinding = app.Create.NewTypeBinding(categorySet)
+    else:
+        newBinding = app.Create.NewInstanceBinding(categorySet)
+    return doc.ParameterBindings.Insert(externalDefinition, newBinding, parameterGroup)
+    
 def GetParameterFromProjectInfo(doc, parameterName):
     """
     Returns a parameter value from the Project Information category by name.
