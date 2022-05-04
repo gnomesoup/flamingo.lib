@@ -1,10 +1,13 @@
 from pyrevit import clr
+from pyrevit.coreutils.logger import get_logger
 clr.AddReferenceByName(
     "Microsoft.Office.Interop.Excel, Version=11.0.0.0, Culture=neutral, PublicKeyToken=71e9bce111e9429c"
 )
 from Microsoft.Office.Interop import Excel
 from System.Runtime.InteropServices import Marshal
 from os import path
+
+LOGGER = get_logger(__name__)
 
 def OpenWorkbook(excelPath, createNew = True):
     """
@@ -32,14 +35,18 @@ def OpenWorkbook(excelPath, createNew = True):
     for wb in excel.Workbooks:
         if (wb.Fullname).lower() == excelPath.lower():
             workbook = wb
+            LOGGER.debug("Found opened workbook")
             break
     if workbook is None:
         if path.exists(excelPath):
             workbook = excel.Workbooks.Open(excelPath)
+            LOGGER.debug("Opened workbook at {}".format(excelPath))
         elif createNew:
             workbook = excel.Workbooks.Add()
+            LOGGER.debug("Created new workbook")
         else:
             workbook = False
+            LOGGER.debug("No workbook found")
     return workbook
 
 def GetWorksheetData(worksheet, group=False, skip=0):
