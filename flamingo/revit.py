@@ -55,7 +55,8 @@ def CreateProjectParameter(
     else:
         newBinding = app.Create.NewInstanceBinding(categorySet)
     return doc.ParameterBindings.Insert(externalDefinition, newBinding, parameterGroup)
-    
+
+
 def GetParameterFromProjectInfo(doc, parameterName):
     """
     Returns a parameter value from the Project Information category by name.
@@ -677,3 +678,10 @@ def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None
     groupTypes = set(group.GroupType for group in groups)
     [group.UngroupMembers() for group in groups]
     return groupTypes
+
+
+def GetAllElementsInModelGroups(doc=None):
+    modelGroups = DB.FilteredElementCollector(doc).OfCategory(
+        DB.BuiltInCategory.OST_IOSModelGroups
+    ).ToElements()
+    return [subelement for modelGroup in modelGroups for subelement in modelGroup.GetSubelements()]
