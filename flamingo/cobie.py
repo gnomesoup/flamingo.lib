@@ -8,7 +8,6 @@ import re
 import System
 from xml.etree import ElementTree as ET
 
-
 CDX_PARAMETER_MAP = [
     {
         "type": "Facility",
@@ -209,8 +208,9 @@ CDX_ANSI_BOMA_CODE_MAP = {
     "Building Common": "02",
     "Floor Common": "03",
     "Vertical Penetration": "04",
-    "PBS Specific": "05"
+    "PBS Specific": "05",
 }
+
 
 def SetCOBieParameter(element, parameterName, value, blankOnly=False):
     """Set a value for a COBie parameter. The parameter must be a string
@@ -508,6 +508,23 @@ def COBieUncheckAll(typeViewSchedule, componentViewSchedule, doc=None):
                         print("{}: {}".format(e, element.Id))
                         unsetElements.append(element)
     return unsetElements
+
+
+def COBieParameterVaryByGroup(typeViewSchedule, doc=None):
+    cobieTypeParameter = GetScheduledParameterByName(
+        typeViewSchedule, "COBie.Type", doc
+    )
+    cobieTypes = (
+        DB.FilteredElementCollector(doc)
+        .WhereElementIsElementType()
+        .WherePasses(
+            DB.ElementParameterFilter(DB.HasValueFilterRule(cobieTypeParameter.Id))
+        )
+        .ToElements()
+    )
+    print(len(cobieTypes))
+    doc = doc or HOST_APP.doc
+    return
 
 
 def COBieIsEnabled(element):
@@ -831,10 +848,11 @@ def GetCDXSpaceBOMAValues(doc=None):
                         "roomNumber": room.Number,
                         "roomName": revit.query.get_name(room),
                         "bomaName": bomaNameParameter.AsString(),
-                        "bomaCode": bomaCodeParameter.AsString()
+                        "bomaCode": bomaCodeParameter.AsString(),
                     }
                 )
     return bomaData
+
 
 def SetCDXSpaceBOMAValue(room, ansi_boma_name, ansi_boma_code_map=None):
     ansi_boma_code_map = ansi_boma_code_map or CDX_ANSI_BOMA_CODE_MAP
