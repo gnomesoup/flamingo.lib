@@ -750,7 +750,10 @@ def COBieParametersToCDX(doc=None):
 
         for level in levels:
             levelIdMatch = re.findall(r"(\d{1,3})", level.Name)
-            levelId = levelIdMatch[0]
+            if levelIdMatch:
+                levelId = levelIdMatch[0]
+            else:
+                continue
             levelIdParameter = level.get_Parameter(
                 System.Guid("12379615-bbe6-46de-9f58-572d56b75142")
             )
