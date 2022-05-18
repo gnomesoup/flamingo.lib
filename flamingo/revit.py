@@ -681,7 +681,14 @@ def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None
 
 
 def GetAllElementsInModelGroups(doc=None):
-    modelGroups = DB.FilteredElementCollector(doc).OfCategory(
-        DB.BuiltInCategory.OST_IOSModelGroups
-    ).ToElements()
-    return [subelement for modelGroup in modelGroups for subelement in modelGroup.GetSubelements()]
+    modelGroups = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_IOSModelGroups)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    return set( 
+        doc.GetElement(memberId)
+        for modelGroup in modelGroups
+        for memberId in modelGroup.GetMemberIds()
+     )

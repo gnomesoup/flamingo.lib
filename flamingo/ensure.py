@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 from Autodesk.Revit import DB
 import clr
+from flamingo.revit import OpenDetached
 from os import path
 from pyrevit import HOST_APP, revit, forms, PyRevitException
+from pyrevit.coreutils.logger import get_logger
 from pyrevit.revit import ensure
 import sys
 import System
 
 clr.ImportExtensions(System.Linq)
+
+
+LOGGER = get_logger(__name__)
 
 
 def set_element_phase_created(
@@ -125,15 +130,31 @@ def EnsureNoteBlockView(viewname, doc=None):
     return viewDrafting
 
 
+def EnsureLibraryDoc(documentName, revitVersion=None):
+    revitVersion = revitVersion or HOST_APP.version
+    docs = HOST_APP.docs
+    libraryPath = [path for path in sys.path if path.endswith("\\flamingo.lib")]
+    LOGGER.debug("libraryPath = {}".format(libraryPath))
+    documentPath = "{}\\{}\\{}.rvt".format(libraryPath[0], revitVersion, documentName)
+    libraryDoc = None
+    for doc in docs:
+        if doc.PathName == documentPath:
+            libraryDoc = doc
+            LOGGER.debug("Found opened library document")
+            break
+    if libraryDoc is None:
+        libraryDoc = OpenDetached(documentPath)
+        LOGGER.debug("Opening library document detached.")
+    return libraryDoc
+
+
 def EnsureLibraryFamily(familyName, revitVersion=None, doc=None):
     if doc is None:
         doc = HOST_APP.doc
     if revitVersion is None:
         revitVersion = HOST_APP.version
     try:
-        libraryPath = [
-            path for path in sys.path if path.endswith("\\KSP.lib".format(revitVersion))
-        ]
+        libraryPath = [path for path in sys.path if path.endswith("\\flamingo.lib")]
         family = ensure.ensure_family(
             familyName,
             family_file="{}\\{}\\{}.rfa".format(
@@ -149,4 +170,3 @@ def EnsureLibraryFamily(familyName, revitVersion=None, doc=None):
             msg="Could not load required note placeholder family", exitscript=True
         )
         return None
-
