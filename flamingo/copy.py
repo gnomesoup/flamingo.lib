@@ -13,7 +13,6 @@ OUTPUT = script.get_output()
 
 VIEW_TOS_PARAM = DB.BuiltInParameter.VIEW_DESCRIPTION
 
-
 class Option(forms.TemplateListItem):
     def __init__(self, op_name, default_state=False):
         super(Option, self).__init__(op_name)
@@ -56,7 +55,6 @@ def get_user_options():
         sys.exit(0)
 
     return op_set
-
 
 def get_default_type(source_doc, type_group):
     return source_doc.GetDefaultElementTypeId(type_group)
@@ -412,7 +410,7 @@ def copy_sheet_guides(activedoc, source_sheet, dest_doc, dest_sheet):
             )
 
 
-def copy_sheet(activedoc, source_sheet, dest_doc):
+def copy_sheet(activedoc, source_sheet, dest_doc, optionSet):
     LOGGER.debug(
         "Copying sheet {} to document {}".format(source_sheet.Name, dest_doc.Title)
     )
@@ -423,19 +421,19 @@ def copy_sheet(activedoc, source_sheet, dest_doc):
 
         if new_sheet:
             if not new_sheet.IsPlaceholder:
-                if OPTION_SET.op_copy_vports:
+                if optionSet.op_copy_vports:
                     LOGGER.debug("Copying sheet viewports...")
                     copy_sheet_viewports(activedoc, source_sheet, dest_doc, new_sheet)
                 else:
                     print("Skipping viewports...")
 
-                if OPTION_SET.op_copy_guides:
+                if optionSet.op_copy_guides:
                     LOGGER.debug("Copying sheet guide grids...")
                     copy_sheet_guides(activedoc, source_sheet, dest_doc, new_sheet)
                 else:
                     print("Skipping sheet guides...")
 
-            if OPTION_SET.op_copy_revisions:
+            if optionSet.op_copy_revisions:
                 LOGGER.debug("Copying sheet revisions...")
                 copy_sheet_revisions(activedoc, source_sheet, dest_doc, new_sheet)
             else:

@@ -35,11 +35,12 @@ def set_element_phase_created(
     if doc is None:
         doc = HOST_APP.doc
     try:
-        if element.IsPhaseCreatedValid(phaseId):
-            if element.CreatedPhaseId != phaseId:
-                element.CreatedPhaseId = phaseId
-                return element
-    except Exception:
+        # if element.IsPhaseCreatedValid(phaseId):
+        if element.CreatedPhaseId != phaseId:
+            element.CreatedPhaseId = phaseId
+            return element
+    except Exception as e:
+        LOGGER.debug("Error setting phase created: {}".format(e))
         return None
     return None
 
@@ -64,11 +65,12 @@ def set_element_phase_demolished(
     if doc is None:
         doc = HOST_APP.doc
     try:
-        if element.IsPhaseDemolishedValid(phaseId):
-            if element.DemolishedPhaseId:
-                element.DemolishedPhaseId = phaseId
-                return element
+        # if element.IsPhaseDemolishedValid(phaseId):
+        if element.DemolishedPhaseId:
+            element.DemolishedPhaseId = phaseId
+            return element
     except Exception as e:
+        LOGGER.debug("Error setting phase demo'd: {}".format(e))
         return None
     return None
 
