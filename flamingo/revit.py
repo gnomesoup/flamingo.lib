@@ -1,11 +1,13 @@
 from flamingo.geometry import GetMidPoint, MakeSolid
 from math import atan2, pi
-from pyrevit import DB, HOST_APP, forms, PyRevitException, revit
+from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
 from os import path
 from string import ascii_uppercase
 import re
 
 from System.Collections.Generic import List
+
+LOGGER = script.get_logger()
 
 
 def CreateProjectParameter(
@@ -690,8 +692,24 @@ def GetAllElementsInModelGroups(doc=None):
         .WhereElementIsNotElementType()
         .ToElements()
     )
-    return set( 
+    return set(
         doc.GetElement(memberId)
         for modelGroup in modelGroups
         for memberId in modelGroup.GetMemberIds()
-     )
+    )
+
+
+def SetParameter(element, parameterName, value):
+    try:
+        parameter = element.LookupParameter(parameterName)
+        if parameter:
+            parameter.Set(value)
+        else:
+            LOGGER.info(
+                "Parameter {} missing from sheet list family. "
+                "Reload the latest family.".format(parameterName)
+            )
+            parameter.Set(value)
+    except AttributeError as e:
+        LOGGER.debug("SetParameter Error: {}".format(e))
+    return parameter
