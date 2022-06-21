@@ -2,8 +2,9 @@ from flamingo.geometry import GetMidPoint, MakeSolid
 from math import atan2, pi
 from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
 from os import path
-from string import ascii_uppercase
 import re
+from string import ascii_uppercase
+from System import Guid
 
 from System.Collections.Generic import List
 
@@ -701,7 +702,10 @@ def GetAllElementsInModelGroups(doc=None):
 
 def SetParameter(element, parameterName, value):
     try:
-        parameter = element.LookupParameter(parameterName)
+        if type(parameterName) == Guid:
+            parameter = element.get_Parameter(parameterName)
+        else:
+            parameter = element.LookupParameter(parameterName)
         if parameter:
             parameter.Set(value)
         else:
@@ -713,3 +717,24 @@ def SetParameter(element, parameterName, value):
     except AttributeError as e:
         LOGGER.debug("SetParameter Error: {}".format(e))
     return parameter
+
+def GetParameterValue(element, parameterName):
+    if type(parameterName) == Guid or type(parameterName) == DB.BuiltInParameter:
+        parameter = element.get_Parameter(parameterName)
+    else:
+        parameter = element.LookupParameter(parameterName)
+    if parameter:
+        unitType = parameter.StorageType
+        if unitType == DB.StorageType.Integer:
+            value = parameter.AsInteger()
+        elif unitType == DB.StorageType.Double:
+            value = parameter.AsDouble()
+        elif unitType == DB.StorageType.String:
+            value = parameter.AsString()
+        elif unitType == DB.StorageType.ElementId:
+            value = parameter.AsElementId()
+        else:
+            value = None
+        return value
+    else:
+        return None
