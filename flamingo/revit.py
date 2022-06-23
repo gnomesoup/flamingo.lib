@@ -186,40 +186,71 @@ def GetScheduleFields(viewSchedule):
     return fields
 
 
-def GetUnusedMaterials(doc=None,  nameFilter=None):
-    allMaterialIds = GetAllProjectMaterialIds(
-        inUseOnly=False,
-        nameFilter=nameFilter,
-        doc=doc
+def GetElementMaterialIds(element):
+    try:
+        elementMaterials = element.GetMaterialIds(False)
+        paintMaterials = element.GetMaterialIds(True)
+        for materialId in paintMaterials:
+            elementMaterials.append(materialId)
+        return elementMaterials
+    except Exception as e:
+        print(e)
+        return []
+
+
+def GetAllProjectMaterialIds(inUseOnly=None, doc=None):
+    doc = doc or HOST_APP.doc
+    inUseOnly = inUseOnly if inUseOnly is not None else True
+    if not inUseOnly:
+        return DB.FilteredElementCollector(doc).OfClass(DB.Material).ToElementIds()
+    elements = (
+        DB.FilteredElementCollector(doc).WhereElementIsNotElementType().ToElements()
     )
-    usedMaterialIds = GetAllProjectMaterialIds(
-        inUseOnly=True,
-        nameFilter=nameFilter,
-        doc=doc
-    )
-    return [
-        doc.GetElement(materialId) for materialId in allMaterialIds
+    projectMaterialIds = set()
+    for element in elements:
+        for materialElementId in GetElementMaterialIds(element):
+            projectMaterialIds.add(materialElementId)
+    return list(projectMaterialIds)
+
+
+def GetUnusedMaterials(doc=None, nameFilter=None):
+    doc = doc or HOST_APP.doc
+    allMaterialIds = GetAllProjectMaterialIds(inUseOnly=False, doc=doc)
+    usedMaterialIds = GetAllProjectMaterialIds(inUseOnly=True, doc=doc)
+    usedMaterials = [
+        doc.GetElement(materialId)
+        for materialId in allMaterialIds
         if materialId not in usedMaterialIds
     ]
+    if nameFilter:
+        nameFilterRegex = re.compile("|".join(nameFilter))
+        return [
+            usedMaterial
+            for usedMaterial in usedMaterials
+            if not nameFilterRegex.match(usedMaterial.Name)
+        ]
+    else:
+        return usedMaterials
+
 
 def GetUnusedAssets(doc=None):
-    postPurgeMaterials = DB.FilteredElementCollector(doc) \
-        .OfClass(DB.Material) \
-        .ToElements()
+    postPurgeMaterials = (
+        DB.FilteredElementCollector(doc).OfClass(DB.Material).ToElements()
+    )
 
-    currentAssetIds = DB.FilteredElementCollector(doc) \
-        .OfClass(DB.AppearanceAssetElement) \
+    currentAssetIds = (
+        DB.FilteredElementCollector(doc)
+        .OfClass(DB.AppearanceAssetElement)
         .ToElementIds()
+    )
 
-    usedAssetIds = [
-        material.AppearanceAssetId for material in postPurgeMaterials
-    ]
+    usedAssetIds = [material.AppearanceAssetId for material in postPurgeMaterials]
     return [
-        doc.GetElement(elementId) for elementId in currentAssetIds
-        if elementId not in usedAssetIds if elementId is not None
+        doc.GetElement(elementId)
+        for elementId in currentAssetIds
+        if elementId not in usedAssetIds
+        if elementId is not None
     ]
-
-
 
 
 def MarkModelTransmitted(filepath, isTransmitted=True):
@@ -753,6 +784,7 @@ def SetParameter(element, parameterName, value):
     except AttributeError as e:
         LOGGER.debug("SetParameter Error: {}".format(e))
     return parameter
+
 
 def GetParameterValue(element, parameterName):
     if type(parameterName) == Guid or type(parameterName) == DB.BuiltInParameter:
