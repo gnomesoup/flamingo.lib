@@ -186,6 +186,42 @@ def GetScheduleFields(viewSchedule):
     return fields
 
 
+def GetUnusedMaterials(doc=None,  nameFilter=None):
+    allMaterialIds = GetAllProjectMaterialIds(
+        inUseOnly=False,
+        nameFilter=nameFilter,
+        doc=doc
+    )
+    usedMaterialIds = GetAllProjectMaterialIds(
+        inUseOnly=True,
+        nameFilter=nameFilter,
+        doc=doc
+    )
+    return [
+        doc.GetElement(materialId) for materialId in allMaterialIds
+        if materialId not in usedMaterialIds
+    ]
+
+def GetUnusedAssets(doc=None):
+    postPurgeMaterials = DB.FilteredElementCollector(doc) \
+        .OfClass(DB.Material) \
+        .ToElements()
+
+    currentAssetIds = DB.FilteredElementCollector(doc) \
+        .OfClass(DB.AppearanceAssetElement) \
+        .ToElementIds()
+
+    usedAssetIds = [
+        material.AppearanceAssetId for material in postPurgeMaterials
+    ]
+    return [
+        doc.GetElement(elementId) for elementId in currentAssetIds
+        if elementId not in usedAssetIds if elementId is not None
+    ]
+
+
+
+
 def MarkModelTransmitted(filepath, isTransmitted=True):
     """
     Marks a workshared project as transmitted. The model will be forced to
