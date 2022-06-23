@@ -186,6 +186,37 @@ def GetScheduleFields(viewSchedule):
     return fields
 
 
+def PurgeUnused(doc=None):
+    doc = doc or HOST_APP.doc
+    purgeGuid = 'e8c63650-70b7-435a-9010-ec97660c1bda'
+    purgableElementIds = []
+    performanceAdviser = DB.PerformanceAdviser.GetPerformanceAdviser()
+    guid = Guid(purgeGuid)
+    ruleId = None
+    allRuleIds = performanceAdviser.GetAllRuleIds()
+    for rule in allRuleIds:
+        # Finds the PerformanceAdviserRuleId for the purge command
+        if str(rule.Guid) == purgeGuid:
+            ruleId = rule
+    ruleIds = List[DB.PerformanceAdviserRuleId]([ruleId])
+    for i in range(4):
+        # Executes the purge
+        failureMessages = performanceAdviser.ExecuteRules(doc, ruleIds)
+        if failureMessages.Count > 0:
+            # Retreives the elements
+            purgableElementIds = failureMessages[0].GetFailingElements()
+    # Deletes the elements
+    try:
+        doc.Delete(purgableElementIds)
+    except:
+        for e in purgableElementIds:
+            try:
+                doc.Delete(e)
+            except:
+                pass
+
+
+
 def GetElementMaterialIds(element):
     try:
         elementMaterials = element.GetMaterialIds(False)
