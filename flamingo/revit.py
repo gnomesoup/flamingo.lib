@@ -20,6 +20,22 @@ def CreateProjectParameter(
     isTypeParameter=True,
     doc=None,
 ):
+    """Import a project parameter from the specified shared parameter file
+
+    Args:
+        parameterName (str|System.Guid): Name or Guid of the parameter to import
+        sharedParameterGroupName (str): Group the shared parameter is organized within
+        revitCategories (list(DB.Categories)): Category the parameter should be added to
+        parameterGroup (DB.): Parameter group enum
+        sharedParametersFilename (str, optional): Path to the shared parameter file that
+            has the parameter. Defaults to None.
+        isTypeParameter (bool, optional): True if type parameter. False if instance
+            parameter. Defaults to True.
+        doc (DB.Document, optional): Document to load parameter. Defaults to None.
+
+    Returns:
+        DB.ParameterBinding: Revit parameter binding for added parameter
+    """
     doc = doc or HOST_APP.doc
     app = doc.Application
 
@@ -37,13 +53,25 @@ def CreateProjectParameter(
                 )
             )
 
-    # Find the parameter in the paramters file
+    # Find the parameter in the parameters file
     definitionsFile = app.OpenSharedParameterFile()
     if not definitionsFile:
-
         PyRevitException("Could not read from the shared parameters file")
     definitionGroup = definitionsFile.Groups.get_Item(sharedParameterGroupName)
-    externalDefinition = definitionGroup.Definitions.get_Item(parameterName)
+    if type(parameterName) == Guid:
+        externalDefinition = None
+        for definition in definitionGroup.Definitions:
+            if definition.GUID == parameterName:
+                externalDefinition = definition
+                break
+    else:
+        externalDefinition = definitionGroup.Definitions.get_Item(parameterName)
+    if not externalDefinition:
+        PyRevitException(
+            "Could not locate parameter in shared parameter file: {}".format(
+                str(parameterName)
+            )
+        )
 
     # Format Revit categories
     categories = doc.Settings.Categories
@@ -155,8 +183,15 @@ def SetNoteBlockProperties(
             fields[parameterNameList[i]] = newField
     return scheduleView
 
-
 def GetSchedulableFields(viewSchedule):
+    """Create a dictionary of schedulable fields for the provided schedule view.
+
+    Args:
+        viewSchedule (DB.ViewSchedule): Revit schedule view
+
+    Returns:
+        dict: Dictionary of fields that can be scheduled, keyed by field name
+    """
     fields = {}
     scheduleDefinition = viewSchedule.Definition
     for field in scheduleDefinition.GetSchedulableFields():
@@ -188,7 +223,7 @@ def GetScheduleFields(viewSchedule):
 
 def PurgeUnused(doc=None):
     doc = doc or HOST_APP.doc
-    purgeGuid = 'e8c63650-70b7-435a-9010-ec97660c1bda'
+    purgeGuid = "e8c63650-70b7-435a-9010-ec97660c1bda"
     purgableElementIds = []
     performanceAdviser = DB.PerformanceAdviser.GetPerformanceAdviser()
     guid = Guid(purgeGuid)
@@ -214,7 +249,6 @@ def PurgeUnused(doc=None):
                 doc.Delete(e)
             except:
                 pass
-
 
 
 def GetElementMaterialIds(element):
@@ -808,8 +842,7 @@ def SetParameter(element, parameterName, value):
             parameter.Set(value)
         else:
             LOGGER.info(
-                "Parameter {} missing from sheet list family. "
-                "Reload the latest family.".format(parameterName)
+                "Parameter {} missing project.".format(parameterName)
             )
             parameter.Set(value)
     except AttributeError as e:
