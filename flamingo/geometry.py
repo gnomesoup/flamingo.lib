@@ -5,6 +5,7 @@ import uuid
 clr.AddReference("System")
 from System.Collections.Generic import List
 
+
 def MakeSolid(minPoint, maxPoint):
     """
     Create a solid cube used to check intersection points for placing
@@ -23,27 +24,32 @@ def MakeSolid(minPoint, maxPoint):
     loopList = List[DB.CurveLoop]()
     loopList.Add(curveLoop)
     height = maxPoint.Z - minPoint.Z
-    centerPoint = DB.XYZ(maxPoint.X - (maxPoint.X - minPoint.X)/2,
-                         maxPoint.Y - (maxPoint.Y - minPoint.Y)/2,
-                         maxPoint.Z - (maxPoint.Z - minPoint.Z)/2)
+    centerPoint = DB.XYZ(
+        maxPoint.X - (maxPoint.X - minPoint.X) / 2,
+        maxPoint.Y - (maxPoint.Y - minPoint.Y) / 2,
+        maxPoint.Z - (maxPoint.Z - minPoint.Z) / 2,
+    )
     solid = DB.GeometryCreationUtilities.CreateExtrusionGeometry(
         loopList, DB.XYZ.BasisZ, height
     )
     return solid
 
+
 def GetFaceWithNormal(solid, normal):
-    faces = (solid.Faces)
+    faces = solid.Faces
     for face in faces:
         faceNormal = face.ComputeNormal(DB.UV())
         if faceNormal.IsAlmostEqualTo(normal):
             return face
+
 
 def GetMinMaxPoints(element, view):
     boundingBox = element.get_BoundingBox(view)
     if boundingBox:
         maximumPoint = boundingBox.Max
         minimumPoint = boundingBox.Min
-    return[minimumPoint, maximumPoint]
+    return [minimumPoint, maximumPoint]
+
 
 def GetMidPoint(point1, point2):
     x = (point1.X + point2.X) / 2
@@ -51,9 +57,8 @@ def GetMidPoint(point1, point2):
     z = (point1.Z + point2.Z) / 2
     return DB.XYZ(x, y, z)
 
-def GetMidPointIntersections(
-    doc, origin, vector, outline, gridSpacing, referenceList
-):
+
+def GetMidPointIntersections(doc, origin, vector, outline, gridSpacing, referenceList):
     """
     Take a list of curves or walls and generate points where those curves
     intersect a grid produced off the bounding area of the elements
@@ -73,40 +78,24 @@ def GetMidPointIntersections(
     points = {}
     if DB.XYZ.BasisX.IsAlmostEqualTo(vector):
         solidMin = DB.XYZ(
-            xMin - gridSpacing,
-            outline.MinimumPoint.Y,
-            outline.MinimumPoint.Z - 1
+            xMin - gridSpacing, outline.MinimumPoint.Y, outline.MinimumPoint.Z - 1
         )
-        solidMax = DB.XYZ(
-            xMin,
-            outline.MaximumPoint.Y,
-            outline.MaximumPoint.Z + 1
-        )
+        solidMax = DB.XYZ(xMin, outline.MaximumPoint.Y, outline.MaximumPoint.Z + 1)
         pointList = [
-            DB.XYZ((x * gridSpacing) + xMin, origin.Y, 0) 
-            for x in range(int(xCount))
+            DB.XYZ((x * gridSpacing) + xMin, origin.Y, 0) for x in range(int(xCount))
         ]
     else:
         solidMin = DB.XYZ(
-            outline.MinimumPoint.X,
-            yMin - gridSpacing,
-            outline.MinimumPoint.Z - 1
+            outline.MinimumPoint.X, yMin - gridSpacing, outline.MinimumPoint.Z - 1
         )
-        solidMax = DB.XYZ(
-            outline.MaximumPoint.X,
-            yMin,
-            outline.MaximumPoint.Z + 1
-        )
+        solidMax = DB.XYZ(outline.MaximumPoint.X, yMin, outline.MaximumPoint.Z + 1)
         pointList = [
-            DB.XYZ(origin.X, (x * gridSpacing) + yMin, 0) 
-            for x in range(int(yCount))
+            DB.XYZ(origin.X, (x * gridSpacing) + yMin, 0) for x in range(int(yCount))
         ]
     # Generate a solid to move around and find interections
     solid = MakeSolid(solidMin, solidMax)
     for point in pointList:
-        translation = DB.Transform.CreateTranslation(
-            point.Subtract(pointList[0])
-        )
+        translation = DB.Transform.CreateTranslation(point.Subtract(pointList[0]))
         iSolid = DB.SolidUtils.CreateTransformed(solid, translation)
         face = GetFaceWithNormal(iSolid, vector)
         for reference in referenceList:
@@ -114,9 +103,11 @@ def GetMidPointIntersections(
                 if type(reference) is DB.Grid:
                     curve = reference.Curve
                 elif type(reference) is DB.Reference:
-                    curve = doc.GetElement(reference)\
-                        .GetGeometryObjectFromReference(reference)\
+                    curve = (
+                        doc.GetElement(reference)
+                        .GetGeometryObjectFromReference(reference)
                         .AsCurve()
+                    )
                 else:
                     curve = reference.Location.Curve
             except Exception as e:
@@ -129,18 +120,19 @@ def GetMidPointIntersections(
                     points[str(uuid.uuid1())] = {
                         "reference": reference,
                         "point": intersectionPoint,
-                        "primary": False
+                        "primary": False,
                     }
         iSolid.Dispose()
     solid.Dispose()
     return points
+
 
 def GetWallLocationCurve(wall, locationLine):
     wallCurve = wall.Location.Curve
     detailLineType = None
     wallType = wall.WallType
     if locationLine == "Core Face: Exterior":
-        offsetLength = (wallType.Width)/2
+        offsetLength = (wallType.Width) / 2
         compoundStructure = wallType.GetCompoundStructure()
         outsideCoreIndex = compoundStructure.GetFirstCoreLayerIndex()
         if outsideCoreIndex > 0:
@@ -152,15 +144,14 @@ def GetWallLocationCurve(wall, locationLine):
             else:
                 referenceVector = DB.XYZ(0, 0, -1)
         else:
-            curveVector = (wallCurve.GetEndPoint(0) - wallCurve.Center)\
-                .Normalize()
+            curveVector = (wallCurve.GetEndPoint(0) - wallCurve.Center).Normalize()
             referenceVector = wallCurve.Normal
             if not curveVector.IsAlmostEqualTo(wall.Orientation):
                 offsetLength = offsetLength * -1
         curveOut = wallCurve.CreateOffset(offsetLength, referenceVector)
         detailLineType = "solid"
     elif locationLine == "Core Face: Interior":
-        offsetLength = (wallType.Width)/2
+        offsetLength = (wallType.Width) / 2
         compoundStructure = wallType.GetCompoundStructure()
         insideCoreIndex = compoundStructure.GetLastCoreLayerIndex()
         if insideCoreIndex > 0:
@@ -172,15 +163,13 @@ def GetWallLocationCurve(wall, locationLine):
             else:
                 referenceVector = DB.XYZ(0, 0, 1)
         else:
-            curveVector = (wallCurve.GetEndPoint(0) - wallCurve.Center)\
-                .Normalize()
+            curveVector = (wallCurve.GetEndPoint(0) - wallCurve.Center).Normalize()
             referenceVector = wallCurve.Normal
             if curveVector.IsAlmostEqualTo(wall.Orientation):
                 offsetLength = offsetLength * -1
         curveOut = wallCurve.CreateOffset(offsetLength, referenceVector)
         detailLineType = "solid"
-    elif locationLine in ["Finished Face: Exterior",
-                          "Finished Face: Interior"]:
+    elif locationLine in ["Finished Face: Exterior", "Finished Face: Interior"]:
         if locationLine == "Finished Face: Exterior":
             shellLayer = DB.ShellLayerType.Exterior
         else:
@@ -188,7 +177,31 @@ def GetWallLocationCurve(wall, locationLine):
         faceReference = DB.HostObjectUtils.GetSideFaces(wall, shellLayer)
         face = wall.GetGeometryObjectFromReference(faceReference[0])
         # for faceCurve in face.GetEdgesAsCurveLoops():
-        curveOut = face 
+        curveOut = face
     else:
         curveOut = wallCurve
     return curveOut, detailLineType
+
+
+def GetSolids(element):
+    return [
+        geometry
+        for geometry in element.get_Geometry(DB.Options())
+        if type(geometry) == DB.Solid
+    ]
+
+def GetSolidsIntersection(solid1, solid2):
+    intersectionSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
+        solid1, solid2, DB.BooleanOperationsType.Intersect
+    )
+    if abs(intersectionSolid.Volume) > 0.000001:
+        return intersectionSolid
+    else:
+        return None
+
+def SolidsAreIntersecting(solid1, solid2):
+    intersectionSolid = SolidsIntersection(solid1, solid2)
+    if intersectionSolid:
+        return True
+    else:
+        return False
