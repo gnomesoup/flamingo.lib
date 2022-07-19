@@ -836,6 +836,8 @@ def SetParameter(element, parameterName, value):
     try:
         if type(parameterName) == Guid:
             parameter = element.get_Parameter(parameterName)
+        elif type(parameterName) == DB.BuiltInParameter:
+            parameter = element.get_Parameter(parameterName)
         else:
             parameter = element.LookupParameter(parameterName)
         if parameter:
