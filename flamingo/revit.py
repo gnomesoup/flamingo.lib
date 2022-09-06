@@ -872,3 +872,65 @@ def GetParameterValue(element, parameterName):
         return value
     else:
         return None
+
+def GetElementsVisibleInView(view=None, IncludeLinkModelElements=True):
+    if view is None:
+        doc = HOST_APP.doc
+        view = doc.ActiveView
+    else:
+        doc = view.Document
+
+    elements = (
+        DB.FilteredElementCollector(doc, view.Id)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    print("View Element Count: {}".format(len(elements)))
+    if IncludeLinkModelElements:
+        categories = doc.Settings.Categories
+        viewPhase = GetViewPhase(view)
+        visibleModelCategories = []
+        for category in categories:
+            try:
+                if category.IsVisibleInUI:
+                    if category.CategoryType == DB.CategoryType.Model:
+                        visibleModelCategories.append(category)
+            except Exception as e:
+                print(e)
+        viewModelCategories = List[DB.BuiltInCategory](
+            [
+                category.Id.IntegerValue
+                for category in visibleModelCategories
+                if not view.GetCategoryHidden(category.Id)
+            ]
+        )
+        print("len(viewModelCategories) = {}".format(len(viewModelCategories)))
+        viewBoundingBox = view.GetSectionBox()
+        rvtLinks = (
+            DB.FilteredElementCollector(doc, view.Id)
+            .OfCategory(DB.BuiltInCategory.OST_RvtLinks)
+            .ToElements()
+        )
+        for rvtLink in rvtLinks:
+            linkDoc = rvtLink.GetLinkDocument()
+            # linkOffset = None
+            rvtLinkType = doc.GetElement(rvtLink.GetTypeId())
+            phaseMap = rvtLinkType.GetPhaseMap()
+            linkPhaseId = phaseMap.TryGetValue(viewPhase.Id)[1]
+            print(type(linkPhaseId))
+            print(linkPhaseId)
+            linkElements = (
+                DB.FilteredElementCollector(linkDoc)
+                .WhereElementIsNotElementType()
+                .WherePasses(
+                    DB.ElementPhaseStatusFilter(
+                        linkPhaseId, DB.ElementOnPhaseStatus.Existing
+                    )
+                )
+                .WherePasses(DB.ElementMulticategoryFilter(viewModelCategories))
+                .ToElements()
+            )
+            elements = list(elements) + list(linkElements)
+
+        print("View + Links Element Count: {}".format(len(elements)))
+    return elements
