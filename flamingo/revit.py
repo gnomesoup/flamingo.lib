@@ -873,6 +873,24 @@ def GetParameterValue(element, parameterName):
     else:
         return None
 
+
+def SetFamilyParameterFormula(parameterName, formula, familyDoc=None):
+    familyDoc = familyDoc or HOST_APP.doc
+    familyManager = familyDoc.FamilyManager
+    if not familyDoc.IsFamilyDocument:
+        LOGGER.debug("SetParameterFormula may only be used on a family document")
+        return
+    if type(parameterName) == Guid or type(parameterName) == DB.BuiltInParameter:
+        parameter = familyManager.get_Parameter(parameterName)
+    else:
+        parameter = familyManager.LookupParameter(parameterName)
+    if not parameter:
+        LOGGER.debug("No parameter found: {}".format(familyDoc.Title))
+        return
+    familyManager.SetFormula(parameter, formula)
+    return parameter
+
+
 def GetElementsVisibleInView(view=None, IncludeLinkModelElements=True):
     if view is None:
         doc = HOST_APP.doc
