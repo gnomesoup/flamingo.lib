@@ -11,6 +11,19 @@ from System.Collections.Generic import List
 LOGGER = script.get_logger()
 
 
+class iFamilyLoadOptions(DB.IFamilyLoadOptions):
+    def OnFamilyFound(self, familyInUse, overwriteParameterValues):
+        overwriteParameterValues = True
+        return True
+
+    def OnSharedFamilyFound(
+        self, sharedFamily, familyInUse, source, overwriteParameterValues
+    ):
+        overwriteParameterValues = True
+        source = DB.FamilySource.Family
+        return True
+
+
 def CreateProjectParameter(
     parameterName,
     sharedParameterGroupName,
