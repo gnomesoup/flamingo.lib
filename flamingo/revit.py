@@ -196,6 +196,7 @@ def SetNoteBlockProperties(
             fields[parameterNameList[i]] = newField
     return scheduleView
 
+
 def GetSchedulableFields(viewSchedule):
     """Create a dictionary of schedulable fields for the provided schedule view.
 
@@ -691,6 +692,15 @@ def GetViewPhase(view, doc=None):
     return doc.GetElement(viewPhaseId)
 
 
+def GetViewPhaseFilter(view, doc=None):
+    if doc is None:
+        doc = HOST_APP.doc
+
+    viewPhaseFilterParameter = view.get_Parameter(DB.BuiltInParameter.VIEW_PHASE_FILTER)
+    viewPhaseFilterId = viewPhaseFilterParameter.AsElementId()
+    return doc.GetElement(viewPhaseFilterId)
+
+
 def GetElementRoom(element, phase, offset=1.0, projectToLevel=True, doc=None):
     """Find the room in a Revit model that a element is placed in or near.
     The function should find the room if it is located above or within a
@@ -920,6 +930,7 @@ def GetElementsVisibleInView(
     if IncludeLinkModelElements:
         categories = doc.Settings.Categories
         viewPhase = GetViewPhase(view)
+        print("len(elements) = {}".format(len(elements)))
         visibleModelCategories = []
         for category in categories:
             try:
@@ -944,24 +955,60 @@ def GetElementsVisibleInView(
         )
         for rvtLink in rvtLinks:
             linkDoc = rvtLink.GetLinkDocument()
-            # linkOffset = None
+            linkOffset = rvtLink.GetTotalTransform().Origin
+            print("linkOffset = {}".format(linkOffset))
             rvtLinkType = doc.GetElement(rvtLink.GetTypeId())
             phaseMap = rvtLinkType.GetPhaseMap()
             linkPhaseId = phaseMap.TryGetValue(viewPhase.Id)[1]
             print(type(linkPhaseId))
             print(linkPhaseId)
+            elementOnPhaseStatusFilter = DB.ElementPhaseStatusFilter(
+                linkPhaseId,
+                List[DB.ElementOnPhaseStatus](
+                    [
+                        DB.ElementOnPhaseStatus.New,
+                        DB.ElementOnPhaseStatus.Existing,
+                    ]
+                ),
+            )
             linkElements = (
                 DB.FilteredElementCollector(linkDoc)
                 .WhereElementIsNotElementType()
-                .WherePasses(
-                    DB.ElementPhaseStatusFilter(
-                        linkPhaseId, DB.ElementOnPhaseStatus.Existing
-                    )
-                )
+                .WherePasses(elementOnPhaseStatusFilter)
                 .WherePasses(DB.ElementMulticategoryFilter(viewModelCategories))
                 .ToElements()
             )
+            print("len(linkElements) = {}".format(len(linkElements)))
             elements = list(elements) + list(linkElements)
 
+            if displayGeometry:
+                print("Displaying geometry")
+                with revit.Transaction("Add direct shapes"):
+                    for element in linkElements:
+                        try:
+                            solids = GetSolids(element)
+                            translatedSolids = List[DB.GeometryObject]()
+                            if linkOffset.IsAlmostEqualTo(DB.XYZ.Zero):
+                                translatedSolids = solids
+                            else:
+                                for solid in solids:
+                                    if not solid:
+                                        continue
+                                    translatedSolid = DB.SolidUtils.CreateTransformed(
+                                        solid,
+                                        DB.Transform.CreateTranslation(linkOffset)
+                                    )
+                                    translatedSolids.Add(translatedSolid)
+                            if translatedSolids:
+                                directShape = DB.DirectShape.CreateElement(
+                                    doc,
+                                    DB.ElementId(bic.OST_GenericModel),
+                                )
+                                directShape.SetShape(translatedSolids)
+                        except Exception as e:
+                            print("solid exception: {}".format(e))
+
         print("View + Links Element Count: {}".format(len(elements)))
+
+
     return elements
