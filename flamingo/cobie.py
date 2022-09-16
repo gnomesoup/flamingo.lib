@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from Autodesk.Revit import DB
-from flamingo.revit import GetViewPhase, GetElementRoom
+from flamingo.revit import GetViewPhase, GetElementRoom, SetParameter
 from flamingo.revit import GetScheduledParameterIds, GetScheduledParameterByName
 from flamingo.revit import GetSchedulableFields
 from pyrevit import forms, HOST_APP, revit, script
@@ -708,10 +708,11 @@ def COBieParametersToCDX(doc=None):
     ]
 
     with revit.Transaction("Set CDX from COBie"):
-        authParameter = projectInformation.get_Parameter(
-            System.Guid("07c80000-aef8-4fb1-8e88-994372265bc2")
+        SetParameter(
+            projectInformation,
+            "07c80000-aef8-4fb1-8e88-994372265bc2",
+            HOST_APP.version_name,
         )
-        authParameter.Set(HOST_APP.version_name)
 
         unitsParameter = projectInformation.get_Parameter(
             System.Guid("99b55570-50da-4f79-9155-b4e41adc0283")
