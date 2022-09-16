@@ -1,11 +1,11 @@
-from flamingo.geometry import GetMidPoint, MakeSolid
+from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid, ElementSolidsToDirectShape
+from flamingo.builtins import bic
 from math import atan2, pi
 from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
 from os import path
 import re
 from string import ascii_uppercase
 from System import Guid
-
 from System.Collections.Generic import List
 
 LOGGER = script.get_logger()
@@ -856,9 +856,7 @@ def SetParameter(element, parameterName, value):
         if parameter:
             parameter.Set(value)
         else:
-            LOGGER.info(
-                "Parameter {} missing project.".format(parameterName)
-            )
+            LOGGER.info("Parameter {} missing project.".format(parameterName))
             parameter.Set(value)
     except AttributeError as e:
         LOGGER.debug("SetParameter Error: {}".format(e))
@@ -904,7 +902,9 @@ def SetFamilyParameterFormula(parameterName, formula, familyDoc=None):
     return parameter
 
 
-def GetElementsVisibleInView(view=None, IncludeLinkModelElements=True):
+def GetElementsVisibleInView(
+    view=None, IncludeLinkModelElements=True, displayGeometry=False
+):
     if view is None:
         doc = HOST_APP.doc
         view = doc.ActiveView
