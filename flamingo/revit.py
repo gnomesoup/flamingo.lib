@@ -1,4 +1,4 @@
-from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid, ElementSolidsToDirectShape
+from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid
 from flamingo.builtins import bic
 from math import atan2, pi
 from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
