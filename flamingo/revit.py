@@ -1,5 +1,4 @@
 from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid
-from flamingo.builtins import bic
 from math import atan2, pi
 from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
 from os import path
@@ -1002,7 +1001,7 @@ def GetElementsVisibleInView(
                             if translatedSolids:
                                 directShape = DB.DirectShape.CreateElement(
                                     doc,
-                                    DB.ElementId(bic.OST_GenericModel),
+                                    DB.ElementId(DB.BuiltInCategory.OST_GenericModel),
                                 )
                                 directShape.SetShape(translatedSolids)
                         except Exception as e:
