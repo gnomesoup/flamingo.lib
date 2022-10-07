@@ -1,8 +1,11 @@
+import codecs
 from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid
 from math import atan2, pi
 from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
+from pyrevit.coreutils.configparser import configparser
 from os import path
 import re
+import shutil
 from string import ascii_uppercase
 from System import Guid
 from System.Collections.Generic import List
@@ -388,12 +391,37 @@ def OpenDetached(filePath, audit=False, preserveWorksets=True, visible=False):
     else:
         detachOption = DB.DetachFromCentralOption.DetachAndDiscardWorksets
     openOptions.DetachFromCentralOption = detachOption
-    openOptions.Audit = True
+    openOptions.Audit = audit
     if visible:
         doc = HOST_APP.uiapp.OpenAndActivateDocument(modelPath, openOptions, True)
     else:
         doc = HOST_APP.app.OpenDocumentFile(modelPath, openOptions)
     return doc
+
+
+def OpenLocal(filePath, localDir, extension=""):
+    LOGGER.debug("Flamingo \"OpenLocal\" called")
+    localDir = path.expandvars(localDir)
+    centralFileName = path.basename(filePath)
+    centralName = re.sub(r"\.rvt$", "", centralFileName)
+    localFileName = "{}_{}{}.rvt".format(centralName, HOST_APP.username, extension)
+    localPath = path.join(localDir, localFileName)
+    LOGGER.info("filePath={}".format(filePath))
+    LOGGER.info("localPath={}".format(localPath))
+    shutil.copyfile(filePath, localPath)
+    return HOST_APP.uiapp.OpenAndActivateDocument(localPath)
+
+
+def GetDefaultPathForUserFiles(app=None):
+    app = HOST_APP.doc.Application
+    currentUsersDataFolderPath = app.CurrentUsersDataFolderPath
+    revitIniPath = "{}/Revit.ini".format(currentUsersDataFolderPath)
+    if path.exists(revitIniPath):
+        cp = configparser.ConfigParser()
+        with codecs.open(revitIniPath, mode="r", encoding="UTF-16") as f:
+            cp.readfp(f)
+        return cp.get("Directories", "projectpath")
+    return None
 
 
 def SaveAsCentral(doc, centralPath):
