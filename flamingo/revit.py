@@ -1,7 +1,8 @@
+from Autodesk.Revit import DB
 import codecs
 from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid
 from math import atan2, pi
-from pyrevit import DB, HOST_APP, forms, PyRevitException, revit, script
+from pyrevit import HOST_APP, forms, PyRevitException, revit, script
 from pyrevit.coreutils.configparser import configparser
 from os import path
 import re
@@ -900,26 +901,27 @@ def SetParameter(element, parameterName, value):
     return parameter
 
 
-def GetParameterValue(element, parameterName):
+def GetParameterValue(parameter):
+    unitType = parameter.StorageType
+    if unitType == DB.StorageType.Integer:
+        return parameter.AsInteger()
+    elif unitType == DB.StorageType.Double:
+        return parameter.AsDouble()
+    elif unitType == DB.StorageType.String:
+        return parameter.AsString()
+    elif unitType == DB.StorageType.ElementId:
+        return parameter.AsElementId()
+    return
+
+
+def GetParameterValueByName(element, parameterName):
     if type(parameterName) == Guid or type(parameterName) == DB.BuiltInParameter:
         parameter = element.get_Parameter(parameterName)
     else:
         parameter = element.LookupParameter(parameterName)
     if parameter:
-        unitType = parameter.StorageType
-        if unitType == DB.StorageType.Integer:
-            value = parameter.AsInteger()
-        elif unitType == DB.StorageType.Double:
-            value = parameter.AsDouble()
-        elif unitType == DB.StorageType.String:
-            value = parameter.AsString()
-        elif unitType == DB.StorageType.ElementId:
-            value = parameter.AsElementId()
-        else:
-            value = None
-        return value
-    else:
-        return None
+        return GetParameterValue(parameter)
+    return
 
 
 def SetFamilyParameterFormula(parameterName, formula, familyDoc=None):
@@ -1039,3 +1041,58 @@ def GetElementsVisibleInView(
 
 
     return elements
+
+def ExportScheduleAsDictionary(viewSchedule):
+    LOGGER.set_debug_mode()
+    LOGGER.info("flamingo.revit.ExportScheduleAsDictionary")
+    LOGGER.debug("viewSchedule.Id.IntegerValue = {}".format(viewSchedule.Id.IntegerValue))
+    #  DB.SectionType.None
+    #  DB.SectionType.Header
+    #  DB.SectionType.Body
+    #  DB.SectionType.Summary
+    #  DB.SectionType.Footer
+    dictionary = []
+    if type(viewSchedule) == DB.ViewSchedule:
+        tableData = viewSchedule.GetTableData()
+        LOGGER.info("NumberOfSections = {}".format(tableData.NumberOfSections))
+        for i in range(tableData.NumberOfSections):
+            sectionData = tableData.GetSectionData(i)
+            LOGGER.debug("tableData.NumberOfColumns = {}".format(sectionData.NumberOfColumns))
+            LOGGER.debug("sectionData.NumberOfRows = {}".format(sectionData.NumberOfRows))
+            for x in range(sectionData.NumberOfRows):
+                rowData = []
+                for y in range(sectionData.NumberOfColumns):
+                    cellText = GetCellValueAsText(sectionData, x, y)
+                    calculatedValue = sectionData.GetCellCalculatedValue(x,y)
+                    cellType = sectionData.GetCellType(x,y)
+                    LOGGER.debug("cell {},{} = {} ({})".format(x,y, cellText, cellType))
+                    rowData.append(cellText)
+                dictionary.append(rowData)
+    return dictionary
+
+def GetCellValueAsText(sectionData, x, y, doc=None):
+    doc = doc or HOST_APP.doc
+    LOGGER.info("flamingo.revit.GetCellValueAsText")
+    cellType = sectionData.GetCellType(x, y)
+    if cellType in (DB.CellType.Text, DB.CellType.ParameterText):
+        LOGGER.debug("Getting text")
+        return sectionData.GetCellText(x, y)
+    elif cellType == DB.CellType.Parameter:
+        LOGGER.debug("Getting parameter")
+        parameterId = sectionData.GetCellParamId(x, y).IntegerValue
+        LOGGER.debug("type(parameterId) = {}".format(type(parameterId)))
+        LOGGER.debug("doc.GetElement(parameterId) = {}".format(doc.GetElement(parameterId)))
+        return GetParameterValue(doc.GetElement(parameterId))
+    elif cellType == DB.CellType.CalculatedValue:
+        LOGGER.debug("Getting calculated value")
+        return sectionData.GetCellCalculatedValue(x, y)
+    elif cellType == DB.CellType.Inherited:
+        LOGGER.debug("Getting inherited")
+        return "INHERITED"
+    elif cellType == DB.CellType.CombinedParameter(x, y):
+        LOGGER.debug("Getting Combined Parameters")
+        combinedParameters = sectionData.GetCellCombinedParameters(x, y)
+        cellValue = ""
+        LOGGER.debug("combinedParameters = {}".format(combinedParameters))
+        return "COMBINED PARAMETERS"
+    return
