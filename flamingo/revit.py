@@ -1,5 +1,6 @@
 from Autodesk.Revit import DB
 import codecs
+from datetime import datetime
 from flamingo.geometry import GetMidPoint, GetSolids, MakeSolid
 from math import atan2, pi
 from pyrevit import HOST_APP, forms, PyRevitException, revit, script
@@ -1096,3 +1097,62 @@ def GetCellValueAsText(sectionData, x, y, doc=None):
         LOGGER.debug("combinedParameters = {}".format(combinedParameters))
         return "COMBINED PARAMETERS"
     return
+
+def GetLinkLoadTimes(logFilePath=None, doc=None):
+    logFilePath = logFilePath or HOST_APP.app.RecordingJournalFilename
+    doc = doc or HOST_APP.doc
+    LOGGER.debug("logFilePath = {}".format(logFilePath))
+    LOGGER.debug("doc.Title = {}".format(doc.Title))
+    out = {}
+    with open(logFilePath, "r") as f:
+        currentTimestamp = None
+        currentJournalC = None
+        activeDocumentPath = None
+        detach = False
+        processNextLine = False
+        for lineNumber, line in enumerate(f):
+            if processNextLine:
+                processNextLine = False
+                m = re.search(r"([^\\]+?\.rvt)", line)
+                if detach:
+                    detach=False
+                    filePath = "{}_detached.rvt".format(m.group(1)[0:-4])
+                else:
+                    filePath = m.group(1)
+                activeDocumentPath = filePath
+                continue
+            m = re.search(r"'C (.*);\s+(.*)", line.strip())
+            if m:
+                currentTimestamp = m.group(1)
+                currentJournalC = m.group(2)
+                continue
+            if '"DetachCheckBox", "True"' in line:
+                detach=True
+                LOGGER.debug("detach = {}".format(detach))
+                continue
+            if 'Jrn.Data "File Name"' in line:
+                processNextLine = True
+                continue
+            m = re.search(r'>Open:Local.*".+\\(.+)"', line)
+            if m:
+                activeDocumentPath = m.group(1)
+                continue
+            m = re.search(r'"\[(.*)\]"', line)
+            if m:
+                activeDocumentPath = m.group(1)
+                continue
+            m = re.search(r"openFromModelPath.+\[(.*)\]", line)
+            if m:
+                # LOGGER.debug(
+                #     "{}: {} {}|{}".format(
+                #         lineNumber, currentTimestamp, activeDocumentPath, m.group(1)
+                #     )
+                # )
+                # documentLoad = (currentTimestamp, m.group(1))
+                # 'C 24-Oct-2022 13:39:40.220;  ->desktop InitApplication
+                timestamp = datetime.strptime(currentTimestamp, "%d-%b-%Y %H:%M:%S.%f")
+                if activeDocumentPath in out:
+                    out[activeDocumentPath][m.group(1)] = timestamp
+                else:
+                    out[activeDocumentPath] = {m.group(1): timestamp}
+    return out
