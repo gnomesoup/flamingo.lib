@@ -487,7 +487,10 @@ def DoorRenameByRoomNumber(
         if not door:
             continue
         roomsToAdd = []
-        toRoom = (door.ToRoom)[phase]
+        try:
+            toRoom = (door.ToRoom)[phase]
+        except Exception as e:
+            continue
         if toRoom:
             if toRoom.Id in roomDoors:
                 roomDoors[toRoom.Id]["doors"] = roomDoors[toRoom.Id]["doors"] + [
