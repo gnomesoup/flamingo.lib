@@ -281,6 +281,12 @@ def GetElementMaterialIds(element):
         return []
 
 
+def GetMaterialDictionary(doc):
+    doc = doc or HOST_APP.doc
+    materials = DB.FilteredElementCollector(doc).OfClass(DB.Material).ToElements()
+    return {material.Name: material.Id for material in materials}
+
+
 def GetAllProjectMaterialIds(inUseOnly=None, doc=None):
     doc = doc or HOST_APP.doc
     inUseOnly = inUseOnly if inUseOnly is not None else True
