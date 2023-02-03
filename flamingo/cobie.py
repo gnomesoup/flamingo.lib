@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 from Autodesk.Revit import DB
-from flamingo.revit import GetViewPhase, GetElementRoom, SetParameter
+from flamingo.revit import GetViewPhase, GetElementRooms, SetParameter
 from flamingo.revit import GetScheduledParameterIds, GetScheduledParameterByName
-from flamingo.revit import GetSchedulableFields
+from flamingo.revit import GetSchedulableFields, GetParameterValueByName
 from pyrevit import forms, HOST_APP, revit, script
 import re
-import System
+from System import Guid
+from System.Collections.Generic import List
 from xml.etree import ElementTree as ET
+
+LOGGER = script.get_logger()
+OUTPUT = script.get_output()
 
 CDX_PARAMETER_MAP = [
     {
@@ -96,8 +100,8 @@ CDX_PARAMETER_MAP = [
     {
         "type": "Type",
         "cobie": "COBie.Type.Category",
-        "cdx": "GSA.05.Asset.AssetType.Abbreviation",
-        "guid": "37791872-234C-4766-9F31-7A3E72050582",
+        "cdx": "GSA.05.Asset.AssetType.Description",
+        "guid": "ACD08F9A-6EAB-4981-8388-14A806DB7DFF",
     },
     {
         "type": "Type",
@@ -108,8 +112,8 @@ CDX_PARAMETER_MAP = [
     {
         "type": "Type",
         "cobie": "COBie.Type.AssetType",
-        "cdx": "GSA.05.Asset.Mobility",
-        "guid": "F5A7AEB6-2216-45BA-B85F-C9E75201F9B2",
+        "cdx": "GSA.05.Asset.AssetType.Abbreviation",
+        "guid": "37791872-234C-4766-9F31-7A3E72050582",
     },
     {
         "type": "Type",
@@ -255,15 +259,25 @@ def COBieParameterIsBlank(element, parameterName):
     Returns:
         bool: True if the parameter value is blank. False otherwise.
     """
-    parameter = element.LookupParameter(parameterName)
-    parameterValue = parameter.AsString()
-    if parameterValue is None or parameterValue == "":
-        return True
+    LOGGER.debug(
+        "COBieParameterIsBlank: element={}, parameter={}".format(
+            element.Id, parameterName
+        )
+    )
+    if type(parameterName) is str:
+        parameter = element.LookupParameter(parameterName)
     else:
-        return False
+        parameter = element.get_Parameter(parameterName)
+    try:
+        parameterValue = parameter.AsString()
+        if parameterValue is None or parameterValue == "":
+            return True
+    except Exception as e:
+        LOGGER.debug(str(e))
+    return
 
 
-def SetCOBieComponentSpace(view, blankOnly, doc=None):
+def SetCOBieComponentSpace(element, phase, blankOnly, doc=None):
     """Finds matches a room to every element listed in the COBie.Components
     schedule that has the "COBie" parameter checked. It then assigns the value
     of matched room number to the COBie.Component.Space parameter.
@@ -273,67 +287,76 @@ def SetCOBieComponentSpace(view, blankOnly, doc=None):
         blankOnly (bool): If true, only update values that are currently blank
         doc (DB.Document, optional): [description]. Defaults to None.
     """
+    LOGGER.debug("SetCOBieComponentSpace")
     if doc is None:
         doc = HOST_APP.doc
-    phase = GetViewPhase(view, doc)
-    elements = (
-        DB.FilteredElementCollector(doc, view.Id)
-        .WhereElementIsNotElementType()
-        .ToElements()
-    )
+
     if blankOnly:
+        if not COBieParameterIsBlank(element, "COBie.Component.Space"):
+            return
+    try:
+        rooms = GetElementRooms(
+            # element=element, phase=doc.Phases[phaseId], offset=1, doc=doc
+            element=element,
+            phase=phase,
+            offset=1,
+            doc=doc,
+        )
+        if not rooms:
+            LOGGER.debug("No room found")
+            return
+        roomNumbers = ", ".join([room.Number for room in rooms])
+        if SetCOBieParameter(element, "COBie.Component.Space", roomNumbers):
+            LOGGER.info("{} -> {}".format(OUTPUT.linkify(element.Id), roomNumbers))
+    except Exception as e:
+        LOGGER.warn("Error: {}".format(e))
+        return
+    LOGGER.debug("SetCOBieComponentSpace: Complete")
+    return element
+
+
+def COBieComponentSetDescription(elements, blankOnly=True, skipGrouped=True, doc=None):
+    LOGGER.debug("COBieComponentSetDescription")
+
+    from flamingo.revit import GetAllElementIdsInModelGroups
+
+    doc = doc or HOST_APP.doc
+
+    if blankOnly:
+        LOGGER.info("Get elements that have a blank value")
         elements = [
             element
             for element in elements
-            if COBieParameterIsBlank(
-                element,
-                "COBie.Component.Space",
-            )
+            if COBieParameterIsBlank(element, "COBie.Component.Description")
         ]
 
-    with revit.Transaction("Set COBie.Component.Space"):
-        for element in elements:
-            parameter = element.LookupParameter("COBie")
-            try:
-                if parameter.AsInteger() < 1:
-                    continue
-                room = GetElementRoom(element=element, phase=phase, doc=doc)
-                if room is None:
-                    continue
-                SetCOBieParameter(element, "COBie.Component.Space", room.Number)
-            except Exception as e:
-                print("Error: {}".format(e))
-    return
-
-
-def COBieComponentSetDescription(view, blankOnly=True, doc=None):
-    if doc is None:
-        doc = HOST_APP.doc
-    elements = (
-        DB.FilteredElementCollector(doc, view.Id)
-        .WhereElementIsNotElementType()
-        .ToElements()
-    )
+    groupedElementIds = GetAllElementIdsInModelGroups(doc) if skipGrouped else []
+    LOGGER.debug("len(groupedElementIds) = {}".format(len(groupedElementIds)))
 
     outElements = []
-    with revit.Transaction("Set COBie.Component.Description"):
-        for element in elements:
-            isCobie = element.LookupParameter("COBie").AsInteger()
-            if isCobie == 1:
-                description = element.get_Parameter(
-                    DB.BuiltInParameter.ELEM_TYPE_PARAM
-                ).AsValueString()
-                elementDescription = element.LookupParameter(
-                    "COBie.Component.Description"
-                )
-                if (
-                    elementDescription.AsString() == ""
-                    or elementDescription.AsString() == None
-                    or not blankOnly
-                ):
-                    elementDescription.Set(description.replace("_", " "))
-                    outElements.append(element)
-    return outElements
+    grouped = []
+    for element in elements:
+        if element.Id in groupedElementIds:
+            LOGGER.warn(
+                "{} Skipping grouped element".format(OUTPUT.linkify(element.Id))
+            )
+            grouped.append(element.Id)
+            continue
+        description = GetParameterValueByName(
+            element,
+            DB.BuiltInParameter.ELEM_FAMILY_AND_TYPE_PARAM,
+            asValueString=True,
+        )
+        LOGGER.debug("description = {}".format(description))
+        elementDescription = element.LookupParameter("COBie.Component.Description")
+        elementDescription.Set(description.replace("_", " "))
+        LOGGER.debug(
+            "{} Set Component Description: {}".format(
+                OUTPUT.linkify(element.Id), description
+            )
+        )
+        outElements.append(element)
+    return outElements, grouped
 
 
 def COBieComponentAssignMarks(view, doc=None):
@@ -352,17 +375,34 @@ def COBieComponentAssignMarks(view, doc=None):
             isCobie = element.LookupParameter("COBie").AsInteger()
             if isCobie != 1:
                 continue
-            symbolId = element.Symbol.Id.IntegerValue
-            if symbolId not in marks:
-                familyInstanceFilter = DB.FamilyInstanceFilter(doc, element.Symbol.Id)
-                instances = (
-                    DB.FilteredElementCollector(doc, view.Id)
-                    .WherePasses(familyInstanceFilter)
-                    .ToElements()
-                )
-                marks[symbolId] = {"count": len(instances), "marks": []}
+            if hasattr(element, "WallType"):
+                LOGGER.warn("WallType")
+                symbolId = element.WallType.Id
+                if symbolId not in marks:
+                    instances = element.WallType.GetDependentElements(
+                        DB.ElementClassFilter(DB.Wall)
+                    )
+            elif hasattr(element, "Symbol"):
+                LOGGER.warn("Symbol")
+                symbolId = element.Symbol.Id
+                if symbolId not in marks:
+                    familyInstanceFilter = DB.FamilyInstanceFilter(doc, symbolId)
+                    instances = (
+                        DB.FilteredElementCollector(doc, view.Id)
+                        .WherePasses(familyInstanceFilter)
+                        .ToElements()
+                    )
+            else:
+                continue
+            LOGGER.warn("len(instances) = {}".format(len(instances)))
+            marks[symbolId] = {"count": len(instances), "marks": []}
             markParameter = element.get_Parameter(DB.BuiltInParameter.DOOR_NUMBER)
+            if not markParameter:
+                markParameter = element.get_Parameter(
+                    DB.BuiltInParameter.ALL_MODEL_MARK
+                )
             mark = markParameter.AsString()
+            LOGGER.warn("mark = {}".format(mark))
             if not mark or mark == "":
                 for i in range(marks[symbolId]["count"]):
                     mark = "{:03d}".format(i + 1)
@@ -551,10 +591,94 @@ def COBieEnable(element):
 
 
 def GetElementSymbol(element):
-    if type(element) == DB.Wall:
+    LOGGER.debug("GetElementSymbol")
+    if hasattr(element, "WallType"):
         return element.WallType
-    else:
+    elif hasattr(element, "Symbol"):
         return element.Symbol
+    elif hasattr(element, "TypeId"):
+        return element.Document.GetElement(element.TypeId)
+    LOGGER.warn("{} Unable to get symbol".format(OUTPUT.linkify(element.Id)))
+    return
+
+
+def GetCOBieTypeElements(doc=None, cobieTypeParameterId=None):
+    LOGGER.debug("GetCOBieTypeElements")
+    doc = doc or HOST_APP.doc
+    if cobieTypeParameterId is None:
+        sharedParameters = (
+            DB.FilteredElementCollector(doc)
+            .OfClass(DB.SharedParameterElement)
+            .ToElements()
+        )
+        cobieTypeGuid = Guid("1691beae-d724-4a70-b6f6-7abd114e9dda")
+        cobieTypeParameter = [
+            sharedParameter
+            for sharedParameter in sharedParameters
+            if sharedParameter.GuidValue == cobieTypeGuid
+        ][0]
+        cobieParameterId = cobieTypeParameter.Id
+    LOGGER.debug("cobieTypeParameterId = {}".format(cobieParameterId))
+    parameterValueProvider = DB.ParameterValueProvider(cobieParameterId)
+    filterIntegerRule = DB.FilterIntegerRule(
+        parameterValueProvider, DB.FilterNumericEquals(), 1
+    )
+    elementParameterFilter = DB.ElementParameterFilter(filterIntegerRule)
+    elements = (
+        DB.FilteredElementCollector(doc)
+        .WhereElementIsElementType()
+        .WherePasses(elementParameterFilter)
+        .ToElements()
+    )
+    LOGGER.debug("COBie Type Element Count: {}".format(len(elements)))
+    return elements
+
+
+def GetCOBieComponentElements(doc=None, phase=None, cobieParameterId=None):
+    LOGGER.debug("GetCOBieComponentElements")
+    doc = doc or HOST_APP.doc
+    if cobieParameterId is None:
+        sharedParameters = (
+            DB.FilteredElementCollector(doc)
+            .OfClass(DB.SharedParameterElement)
+            .ToElements()
+        )
+        cobieGuid = Guid("a4a71d65-98ff-466f-9c70-d8d281aae297")
+        cobieParameter = [
+            sharedParameter
+            for sharedParameter in sharedParameters
+            if sharedParameter.GuidValue == cobieGuid
+        ][0]
+        cobieParameterId = cobieParameter.Id
+    LOGGER.debug("cobieParameterId = {}".format(cobieParameterId))
+    parameterValueProvider = DB.ParameterValueProvider(cobieParameterId)
+    filterIntegerRule = DB.FilterIntegerRule(
+        parameterValueProvider, DB.FilterNumericEquals(), 1
+    )
+    elementParameterFilter = DB.ElementParameterFilter(filterIntegerRule)
+    elementMulticategoryFilter = DB.ElementMulticategoryFilter(
+        List[DB.BuiltInCategory](
+            [DB.BuiltInCategory.OST_Levels, DB.BuiltInCategory.OST_Rooms]
+        ),
+        True,
+    )
+    collection = (
+        DB.FilteredElementCollector(doc)
+        .WhereElementIsNotElementType()
+        .WherePasses(elementMulticategoryFilter)
+        .WherePasses(elementParameterFilter)
+    )
+    if phase:
+        LOGGER.debug("Filtering by new on phaseId: {}".format(phase.Id.IntegerValue))
+        elementPhaseStatusFilter = DB.ElementPhaseStatusFilter(
+            phase.Id, DB.ElementOnPhaseStatus.New
+        )
+        collection = collection.WherePasses(elementPhaseStatusFilter)
+    
+    elements = collection.ToElements()
+
+    LOGGER.debug("COBie Component Element Count: {}".format(len(elements)))
+    return elements
 
 
 def COBieComponentAutoSelect(view, doc=None):
@@ -635,8 +759,8 @@ def COBieSpaceSetDescription(view, blankOnly=True, doc=None):
 
 
 def SetCDXParameterFromCOBie(element, cdxGuid, COBieParameterName):
-    if type(cdxGuid) is not System.Guid:
-        cdxGuid = System.Guid(cdxGuid)
+    if type(cdxGuid) is not Guid:
+        cdxGuid = Guid(cdxGuid)
     if type(COBieParameterName) is str:
         cobieParameter = element.LookupParameter(COBieParameterName)
     else:
@@ -685,7 +809,7 @@ def COBieParametersToCDX(doc=None):
 
     zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
     try:
-        zoneSchema = DB.ExtensibleStorage.Schema.Lookup(System.Guid(zoneSchemaGUID))
+        zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
         zoneXML = revit.query.get_schema_field_values(projectInformation, zoneSchema)[
             "Zones"
         ]
@@ -715,7 +839,7 @@ def COBieParametersToCDX(doc=None):
         )
 
         unitsParameter = projectInformation.get_Parameter(
-            System.Guid("99b55570-50da-4f79-9155-b4e41adc0283")
+            Guid("99b55570-50da-4f79-9155-b4e41adc0283")
         )
         unitsParameter.Set(
             "Imperial" if doc.DisplayUnitSystem == DB.DisplayUnit.IMPERIAL else "Metric"
@@ -735,7 +859,7 @@ def COBieParametersToCDX(doc=None):
                     room = doc.GetElement(space.attrib["ID"])
                     if room:
                         zoneParameter = room.get_Parameter(
-                            System.Guid("B5DB0243-5AFE-4153-B037-775E21CC57F1")
+                            Guid("B5DB0243-5AFE-4153-B037-775E21CC57F1")
                         )
                         zoneParameter.Set(zoneName)
 
@@ -756,7 +880,7 @@ def COBieParametersToCDX(doc=None):
             else:
                 continue
             levelIdParameter = level.get_Parameter(
-                System.Guid("12379615-bbe6-46de-9f58-572d56b75142")
+                Guid("12379615-bbe6-46de-9f58-572d56b75142")
             )
             levelIdParameter.Set(levelId)
             for item in floorParameters:
@@ -840,10 +964,10 @@ def GetCDXSpaceBOMAValues(doc=None):
     for room in rooms:
         if COBieIsEnabled(room):
             bomaNameParameter = room.get_Parameter(
-                System.Guid("B0C2E838-BE22-44C4-8B0D-F9FAC2D9DAFD")
+                Guid("B0C2E838-BE22-44C4-8B0D-F9FAC2D9DAFD")
             )
             bomaCodeParameter = room.get_Parameter(
-                System.Guid("EE6CECDF-20AA-4A8A-BC49-69C2E230BE52")
+                Guid("EE6CECDF-20AA-4A8A-BC49-69C2E230BE52")
             )
             if bomaNameParameter and bomaCodeParameter:
                 bomaData.append(
@@ -860,12 +984,8 @@ def GetCDXSpaceBOMAValues(doc=None):
 
 def SetCDXSpaceBOMAValue(room, ansi_boma_name, ansi_boma_code_map=None):
     ansi_boma_code_map = ansi_boma_code_map or CDX_ANSI_BOMA_CODE_MAP
-    bomaNameParameter = room.get_Parameter(
-        System.Guid("B0C2E838-BE22-44C4-8B0D-F9FAC2D9DAFD")
-    )
-    bomaCodeParameter = room.get_Parameter(
-        System.Guid("EE6CECDF-20AA-4A8A-BC49-69C2E230BE52")
-    )
+    bomaNameParameter = room.get_Parameter(Guid("B0C2E838-BE22-44C4-8B0D-F9FAC2D9DAFD"))
+    bomaCodeParameter = room.get_Parameter(Guid("EE6CECDF-20AA-4A8A-BC49-69C2E230BE52"))
     if bomaNameParameter and bomaCodeParameter:
         bomaNameParameter.Set(ansi_boma_name)
         bomaCodeParameter.Set(ansi_boma_code_map[ansi_boma_name])

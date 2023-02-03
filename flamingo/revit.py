@@ -13,6 +13,7 @@ from System import Guid
 from System.Collections.Generic import List
 
 LOGGER = script.get_logger()
+OUTPUT = script.get_output()
 
 
 class iFamilyLoadOptions(DB.IFamilyLoadOptions):
@@ -408,7 +409,7 @@ def OpenDetached(filePath, audit=False, preserveWorksets=True, visible=False):
 
 
 def OpenLocal(filePath, localDir, extension=""):
-    LOGGER.debug("Flamingo \"OpenLocal\" called")
+    LOGGER.debug('Flamingo "OpenLocal" called')
     localDir = path.expandvars(localDir)
     centralFileName = path.basename(filePath)
     centralName = re.sub(r"\.rvt$", "", centralFileName)
@@ -739,7 +740,7 @@ def GetViewPhaseFilter(view, doc=None):
     return doc.GetElement(viewPhaseFilterId)
 
 
-def GetElementRoom(element, phase, offset=1.0, projectToLevel=True, doc=None):
+def GetElementRooms(element, phase, offset=1.0, projectToLevel=True, doc=None):
     """Find the room in a Revit model that a element is placed in or near.
     The function should find the room if it is located above or within a
     specified offset
@@ -761,16 +762,26 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel=True, doc=None):
     Returns:
         DB.Room: Room in the Revit model to which the element is matched.
     """
+    from Autodesk.Revit.Exceptions import InvalidOperationException
+
+    LOGGER.debug(
+        "GetElementRoom: element={}, phase={}, offset={}".format(
+            OUTPUT.linkify(element.Id), phase.Id, offset
+        )
+    )
     if doc is None:
         doc = HOST_APP.doc
 
-    room = (element.Room)[phase]
-    if room is not None:
-        return room
+    # Check if element self reports room
+    if hasattr(element, "Room"):
+        room = (element.Room)[phase]
+        if room is not None:
+            return room
 
+    # Get the elements bounding box
     elementBoundingBox = element.get_BoundingBox(None)
     if not elementBoundingBox.Enabled:
-        print("Bounding Box Not Enabled")
+        LOGGER.debug("Bounding Box Not Enabled")
         return
 
     elementOutline = DB.Outline(
@@ -779,10 +790,20 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel=True, doc=None):
     )
 
     if projectToLevel and element.Location is not None:
+        location = element.Location
+        if type(location) == DB.LocationCurve:
+            curve = location.Curve
+            elementPoint = curve.GetEndPoint(0)
+        else:
+            elementPoint = element.Location.Point
+        LOGGER.debug("elementPoint = {}".format(elementPoint))
         elementLevel = doc.GetElement(element.LevelId)
-        levelElevation = elementLevel.Elevation
-        elementPoint = element.Location.Point
-        elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, levelElevation))
+        if elementLevel:
+            z = elementLevel.Elevation
+        else:
+            LOGGER.debug("{}: Element has no level")
+            z = elementPoint.Z
+        elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, z))
 
     boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(elementOutline)
 
@@ -792,23 +813,40 @@ def GetElementRoom(element, phase, offset=1.0, projectToLevel=True, doc=None):
         .WherePasses(boundingBoxIntersectsFilter)
         .ToElements()
     )
-    elementSolid = MakeSolid(elementOutline.MinimumPoint, elementOutline.MaximumPoint)
-    matchedRoom = None
+    LOGGER.debug("Number of intersecting rooms: {}".format(len(rooms)))
+    elementSolids = GetSolids(element)
+    matchedRooms = []
     maxVolume = 0
     for room in rooms:
-        solids = [
-            geometryElement
-            for geometryElement in room.get_Geometry(DB.Options())
-            if type(geometryElement) == DB.Solid
-        ]
-        interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
-            solids[0], elementSolid, DB.BooleanOperationsType.Intersect
+        roomSolids = GetSolids(room)
+        interSolid = None
+        for elementSolid in elementSolids:
+            try:
+                interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
+                    roomSolids[0], elementSolid, DB.BooleanOperationsType.Intersect
+                )
+                if hasattr(interSolid, "Volume") and abs(interSolid.Volume > 0.000001):
+                    if interSolid.Volume > maxVolume:
+                        maxVolume = interSolid.Volume
+                        matchedRooms.append(room)
+            except InvalidOperationException as e:
+                LOGGER.debug("Error: {}".format(str(e)))
+    if not matchedRooms:
+        elementSolid = MakeSolid(
+            elementOutline.MinimumPoint, elementOutline.MaximumPoint
         )
-        if abs(interSolid.Volume > 0.000001):
-            if interSolid.Volume > maxVolume:
-                maxVolume = interSolid.Volume
-                matchedRoom = room
-    return matchedRoom
+        for room in rooms:
+            try:
+                interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
+                    roomSolids[0], elementSolid, DB.BooleanOperationsType.Intersect
+                )
+                if hasattr(interSolid, "Volume") and abs(interSolid.Volume > 0.000001):
+                    if interSolid.Volume > maxVolume:
+                        maxVolume = interSolid.Volume
+                        matchedRooms.append(room)
+            except InvalidOperationException as e:
+                LOGGER.debug("Error: {}".format(str(e)))
+    return matchedRooms
 
 
 def GetScheduledParameterIds(scheduleView):
@@ -880,6 +918,7 @@ def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None
 
 
 def GetAllElementsInModelGroups(doc=None):
+    doc = doc or HOST_APP.doc
     modelGroups = (
         DB.FilteredElementCollector(doc)
         .OfCategory(DB.BuiltInCategory.OST_IOSModelGroups)
@@ -890,6 +929,19 @@ def GetAllElementsInModelGroups(doc=None):
         doc.GetElement(memberId)
         for modelGroup in modelGroups
         for memberId in modelGroup.GetMemberIds()
+    )
+
+
+def GetAllElementIdsInModelGroups(doc=None):
+    doc = doc or HOST_APP.doc
+    modelGroups = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_IOSModelGroups)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    return set(
+        memberId for modelGroup in modelGroups for memberId in modelGroup.GetMemberIds()
     )
 
 
@@ -911,26 +963,36 @@ def SetParameter(element, parameterName, value):
     return parameter
 
 
-def GetParameterValue(parameter):
-    unitType = parameter.StorageType
-    if unitType == DB.StorageType.Integer:
+def GetParameterValue(parameter, asValueString=False):
+    LOGGER.debug("GetParameterValue")
+    if asValueString == True:
+        LOGGER.debug("AsValueString")
+        return parameter.AsValueString()
+    storageType = parameter.StorageType
+    if storageType == DB.StorageType.Integer:
+        LOGGER.debug("AsInteger")
         return parameter.AsInteger()
-    elif unitType == DB.StorageType.Double:
+    elif storageType == DB.StorageType.Double:
+        LOGGER.debug("AsDouble")
         return parameter.AsDouble()
-    elif unitType == DB.StorageType.String:
+    elif storageType == DB.StorageType.String:
+        LOGGER.debug("AsString")
         return parameter.AsString()
-    elif unitType == DB.StorageType.ElementId:
+    elif storageType == DB.StorageType.ElementId:
+        LOGGER.debug("AsElementId")
         return parameter.AsElementId()
+    LOGGER.debug("No matching storage type")
     return
 
 
-def GetParameterValueByName(element, parameterName):
+def GetParameterValueByName(element, parameterName, asValueString=False):
+    LOGGER.debug("GetParameterValueByName")
     if type(parameterName) == Guid or type(parameterName) == DB.BuiltInParameter:
         parameter = element.get_Parameter(parameterName)
     else:
         parameter = element.LookupParameter(parameterName)
     if parameter:
-        return GetParameterValue(parameter)
+        return GetParameterValue(parameter, asValueString=asValueString)
     return
 
 
@@ -938,7 +1000,7 @@ def SetFamilyParameterFormula(parameterName, formula, familyDoc=None):
     familyDoc = familyDoc or HOST_APP.doc
     familyManager = familyDoc.FamilyManager
     if not familyDoc.IsFamilyDocument:
-        LOGGER.debug("SetParameterFormula may only be used on a family document")
+        LOGGER.warn("SetParameterFormula may only be used on a family document")
         return
     if type(parameterName) == Guid or type(parameterName) == DB.BuiltInParameter:
         parameter = familyManager.get_Parameter(parameterName)
@@ -949,6 +1011,49 @@ def SetFamilyParameterFormula(parameterName, formula, familyDoc=None):
         return
     familyManager.SetFormula(parameter, formula)
     return parameter
+
+
+def CopyParameterValue(element, source, destination):
+    """Copy the value from the `source` parameter to the `destination`. Will only be
+    successful on parameters that have the same storage type.
+
+    Args:
+        element (Autodesk.Revit.DB.Element): Revit element that hosts the parameter
+            value to be copied
+        source (Autodesk.Revit.DB.Parameter): Parameter that will provide the value to
+            be copied
+        destination (Autodesk.Revit.DB.Parameter): Parameter to which the value is
+            copied
+
+    Returns:
+        Autodesk.Revit.DB.Parameter: Updated destination parameter
+    """
+    LOGGER.debug("CopyParameterValue")
+    if type(destination) is not Guid:
+        destination = Guid(destination)
+    if type(source) is str:
+        sourceParameter = element.LookupParameter(source)
+    else:
+        sourceParameter = element.get_Parameter(source)
+    destinationParameter = element.get_Parameter(destination)
+    if sourceParameter is None:
+        return
+    if destinationParameter is None:
+        return
+    try:
+        if sourceParameter.StorageType == DB.StorageType.Double:
+            value = sourceParameter.AsDouble()
+        elif sourceParameter.StorageType == DB.StorageType.Integer:
+            value = sourceParameter.AsInteger()
+        elif sourceParameter.StorageType == DB.StorageType.ElementId:
+            value = sourceParameter.AsElementId()
+        else:
+            value = sourceParameter.AsString()
+        LOGGER.debug("value = {}".format(value))
+        destinationParameter.Set(value or "")
+    except (AttributeError, TypeError) as e:
+        LOGGER.warn("\tError:{}".format(e))
+    return destinationParameter
 
 
 def GetElementsVisibleInView(
@@ -1035,7 +1140,7 @@ def GetElementsVisibleInView(
                                         continue
                                     translatedSolid = DB.SolidUtils.CreateTransformed(
                                         solid,
-                                        DB.Transform.CreateTranslation(linkOffset)
+                                        DB.Transform.CreateTranslation(linkOffset),
                                     )
                                     translatedSolids.Add(translatedSolid)
                             if translatedSolids:
@@ -1049,13 +1154,15 @@ def GetElementsVisibleInView(
 
         print("View + Links Element Count: {}".format(len(elements)))
 
-
     return elements
+
 
 def ExportScheduleAsDictionary(viewSchedule):
     LOGGER.set_debug_mode()
     LOGGER.info("flamingo.revit.ExportScheduleAsDictionary")
-    LOGGER.debug("viewSchedule.Id.IntegerValue = {}".format(viewSchedule.Id.IntegerValue))
+    LOGGER.debug(
+        "viewSchedule.Id.IntegerValue = {}".format(viewSchedule.Id.IntegerValue)
+    )
     #  DB.SectionType.None
     #  DB.SectionType.Header
     #  DB.SectionType.Body
@@ -1067,18 +1174,25 @@ def ExportScheduleAsDictionary(viewSchedule):
         LOGGER.info("NumberOfSections = {}".format(tableData.NumberOfSections))
         for i in range(tableData.NumberOfSections):
             sectionData = tableData.GetSectionData(i)
-            LOGGER.debug("tableData.NumberOfColumns = {}".format(sectionData.NumberOfColumns))
-            LOGGER.debug("sectionData.NumberOfRows = {}".format(sectionData.NumberOfRows))
+            LOGGER.debug(
+                "tableData.NumberOfColumns = {}".format(sectionData.NumberOfColumns)
+            )
+            LOGGER.debug(
+                "sectionData.NumberOfRows = {}".format(sectionData.NumberOfRows)
+            )
             for x in range(sectionData.NumberOfRows):
                 rowData = []
                 for y in range(sectionData.NumberOfColumns):
                     cellText = GetCellValueAsText(sectionData, x, y)
-                    calculatedValue = sectionData.GetCellCalculatedValue(x,y)
-                    cellType = sectionData.GetCellType(x,y)
-                    LOGGER.debug("cell {},{} = {} ({})".format(x,y, cellText, cellType))
+                    calculatedValue = sectionData.GetCellCalculatedValue(x, y)
+                    cellType = sectionData.GetCellType(x, y)
+                    LOGGER.debug(
+                        "cell {},{} = {} ({})".format(x, y, cellText, cellType)
+                    )
                     rowData.append(cellText)
                 dictionary.append(rowData)
     return dictionary
+
 
 def GetCellValueAsText(sectionData, x, y, doc=None):
     doc = doc or HOST_APP.doc
@@ -1091,7 +1205,9 @@ def GetCellValueAsText(sectionData, x, y, doc=None):
         LOGGER.debug("Getting parameter")
         parameterId = sectionData.GetCellParamId(x, y).IntegerValue
         LOGGER.debug("type(parameterId) = {}".format(type(parameterId)))
-        LOGGER.debug("doc.GetElement(parameterId) = {}".format(doc.GetElement(parameterId)))
+        LOGGER.debug(
+            "doc.GetElement(parameterId) = {}".format(doc.GetElement(parameterId))
+        )
         return GetParameterValue(doc.GetElement(parameterId))
     elif cellType == DB.CellType.CalculatedValue:
         LOGGER.debug("Getting calculated value")
@@ -1106,6 +1222,7 @@ def GetCellValueAsText(sectionData, x, y, doc=None):
         LOGGER.debug("combinedParameters = {}".format(combinedParameters))
         return "COMBINED PARAMETERS"
     return
+
 
 def GetLinkLoadTimes(logFilePath=None, doc=None):
     logFilePath = logFilePath or HOST_APP.app.RecordingJournalFilename
@@ -1124,7 +1241,7 @@ def GetLinkLoadTimes(logFilePath=None, doc=None):
                 processNextLine = False
                 m = re.search(r"([^\\]+?\.rvt)", line)
                 if detach:
-                    detach=False
+                    detach = False
                     filePath = "{}_detached.rvt".format(m.group(1)[0:-4])
                 else:
                     filePath = m.group(1)
@@ -1136,7 +1253,7 @@ def GetLinkLoadTimes(logFilePath=None, doc=None):
                 currentJournalC = m.group(2)
                 continue
             if '"DetachCheckBox", "True"' in line:
-                detach=True
+                detach = True
                 LOGGER.debug("detach = {}".format(detach))
                 continue
             if 'Jrn.Data "File Name"' in line:
