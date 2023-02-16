@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 from Autodesk.Revit import DB
-from flamingo.revit import GetViewPhase, GetElementRooms, SetParameter
-from flamingo.revit import GetScheduledParameterIds, GetScheduledParameterByName
-from flamingo.revit import GetSchedulableFields, GetParameterValueByName
+from flamingo.revit import (
+    GetViewPhase,
+    GetElementRooms,
+    SetParameter,
+    GetScheduledParameterIds,
+    GetScheduledParameterByName,
+    GetSchedulableFields,
+    GetParameterValueByName,
+)
 from pyrevit import forms, HOST_APP, revit, script
 import re
 from System import Guid
@@ -412,13 +418,15 @@ def COBieComponentAssignMarks(view, doc=None):
                         break
 
 
-def COBieParameterBlankOut(scheduleList, doc=None):
+def COBieParameterBlankOut(scheduleList, elements=None, doc=None):
     """Clears values for selected COBie paramaters. This is helpful for values
     that are not required at particular time points, like Manufacture at the CD
     project phase.
 
     Args:
         scheduleList (list[DB.ViewSchedule]): List of schedules to operate on
+        elements (list[DB.Elements]): List of Revit elements to operate on. If not
+            included, all elements that have the parameter will be blanked out.
         doc (DB.Document, optional): Revit document that hosts the parameters to
             be blanked out. Defaults to None.
     """
@@ -439,7 +447,7 @@ def COBieParameterBlankOut(scheduleList, doc=None):
                 parameterNames.append(parameter.Name)
         groupedParameterNames[schedule.Name] = parameterNames
     parameterNamesOut = forms.SelectFromList.show(
-        groupedParameterNames,
+        sorted(scheduledParameters.keys()),
         multiselect=True,
         group_selector_title="COBie Schedule",
         button_name="Select Parameters",
@@ -448,6 +456,13 @@ def COBieParameterBlankOut(scheduleList, doc=None):
     if not parameterNamesOut:
         script.exit()
 
+    if elements:
+        elementIds = [element.Id for element in elements]
+        elementTypes = [GetElementSymbol(element) for element in elements]
+        elementTypeIds = set(element.Id for element in elementTypes)
+    else:
+        elementIds = None
+        elementTypeIds = None
     bindings = doc.ParameterBindings
     with revit.Transaction("COBie Parameter Blank Out"):
         for parameterName in parameterNamesOut:
@@ -462,14 +477,21 @@ def COBieParameterBlankOut(scheduleList, doc=None):
             elementParameterFilter = DB.ElementParameterFilter(filterStringRule)
             if type(parameterBinding) is DB.TypeBinding:
                 collector = DB.FilteredElementCollector(doc).WhereElementIsElementType()
+                if elementTypeIds:
+                    collector.WherePasses(
+                        DB.ElementIdSetFilter(List[DB.ElementId](elementTypeIds))
+                    )
             else:
                 collector = DB.FilteredElementCollector(
                     doc
                 ).WhereElementIsNotElementType()
+                if elementIds:
+                    collector.WherePasses(
+                        DB.ElementIdSetFilter(List[DB.ElementId](elementIds))
+                    )
             elements = collector.WherePasses(elementParameterFilter).ToElements()
 
             for element in elements:
-
                 elementParameter = element.get_Parameter(parameter.GuidValue)
                 elementParameter.Set("")
 
@@ -568,7 +590,8 @@ def COBieParameterVaryByGroup(typeViewSchedule, doc=None):
 
 
 def COBieIsEnabled(element):
-    parameter = element.LookupParameter("COBie")
+    cobieGuid = Guid("a4a71d65-98ff-466f-9c70-d8d281aae297")
+    parameter = element.get_Parameter(cobieGuid)
     try:
         assert parameter.AsInteger() > 0
         return True
@@ -586,7 +609,14 @@ def COBieTypeIsEnabled(element):
 
 
 def COBieEnable(element):
-    parameter = element.LookupParameter("COBie")
+    cobieGuid = Guid("a4a71d65-98ff-466f-9c70-d8d281aae297")
+    parameter = element.get_Parameter(cobieGuid)
+    parameter.Set(True)
+
+
+def COBieTypeEnable(element):
+    cobieTypeGuid = Guid("1691beae-d724-4a70-b6f6-7abd114e9dda")
+    parameter = element.get_Parameter(cobieTypeGuid)
     parameter.Set(True)
 
 
@@ -674,7 +704,7 @@ def GetCOBieComponentElements(doc=None, phase=None, cobieParameterId=None):
             phase.Id, DB.ElementOnPhaseStatus.New
         )
         collection = collection.WherePasses(elementPhaseStatusFilter)
-    
+
     elements = collection.ToElements()
 
     LOGGER.debug("COBie Component Element Count: {}".format(len(elements)))
@@ -784,6 +814,140 @@ def SetCDXParameterFromCOBie(element, cdxGuid, COBieParameterName):
 
 
 def COBieParametersToCDX(doc=None):
+    doc = doc or HOST_APP.doc
+
+    # Parameter Dictionary
+    facilityParameters = [
+        item for item in CDX_PARAMETER_MAP if item["type"] == "Facility"
+    ]
+
+    projectInformations = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
+        .ToElements()
+    )
+    projectInformation = projectInformations[0]
+
+    rooms = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_Rooms)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+
+    spaceParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Space"]
+
+    zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
+    try:
+        zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
+        zoneXML = revit.query.get_schema_field_values(projectInformation, zoneSchema)[
+            "Zones"
+        ]
+        zoneList = ET.fromstring(zoneXML)
+    except Exception:
+        zoneList = None
+
+    levels = (
+        DB.FilteredElementCollector(doc)
+        .OfCategory(DB.BuiltInCategory.OST_Levels)
+        .WhereElementIsNotElementType()
+        .ToElements()
+    )
+    floorParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Floor"]
+
+    cobieTypes = revit.query.get_elements_by_parameter("COBie.Type", 1, doc=doc)
+    typeParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Type"]
+    componentParameters = [
+        item for item in CDX_PARAMETER_MAP if item["type"] == "Component"
+    ]
+
+    with revit.Transaction("Set CDX from COBie"):
+        SetParameter(
+            projectInformation,
+            "07c80000-aef8-4fb1-8e88-994372265bc2",
+            HOST_APP.version_name,
+        )
+
+        unitsParameter = projectInformation.get_Parameter(
+            Guid("99b55570-50da-4f79-9155-b4e41adc0283")
+        )
+        unitsParameter.Set(
+            "Imperial" if doc.DisplayUnitSystem == DB.DisplayUnit.IMPERIAL else "Metric"
+        )
+
+        for item in facilityParameters:
+            SetCDXParameterFromCOBie(
+                element=projectInformation,
+                cdxGuid=item["guid"],
+                COBieParameterName=item["cobie"],
+            )
+
+        for zone in zoneList:
+            zoneName = zone.attrib["Name"]
+            for space in zone:
+                if True:
+                    room = doc.GetElement(space.attrib["ID"])
+                    if room:
+                        zoneParameter = room.get_Parameter(
+                            Guid("B5DB0243-5AFE-4153-B037-775E21CC57F1")
+                        )
+                        zoneParameter.Set(zoneName)
+
+        for room in rooms:
+            for item in spaceParameters:
+                if COBieIsEnabled(room):
+                    cobieName = item["cobie"]
+                    SetCDXParameterFromCOBie(
+                        element=room,
+                        cdxGuid=item["guid"],
+                        COBieParameterName=cobieName,
+                    )
+
+        for level in levels:
+            levelIdMatch = re.findall(r"(\d{1,3})", level.Name)
+            if levelIdMatch:
+                levelId = levelIdMatch[0]
+            else:
+                continue
+            levelIdParameter = level.get_Parameter(
+                Guid("12379615-bbe6-46de-9f58-572d56b75142")
+            )
+            levelIdParameter.Set(levelId)
+            for item in floorParameters:
+                if COBieIsEnabled(level):
+                    cobieName = item["cobie"]
+                    SetCDXParameterFromCOBie(
+                        element=level,
+                        cdxGuid=item["guid"],
+                        COBieParameterName=cobieName,
+                    )
+
+        for cobieType in cobieTypes:
+            for item in typeParameters:
+                cobieName = item["cobie"]
+                SetCDXParameterFromCOBie(
+                    element=cobieType,
+                    cdxGuid=item["guid"],
+                    COBieParameterName=cobieName,
+                )
+            instanceIds = cobieType.GetDependentElements(
+                DB.ElementClassFilter(DB.FamilyInstance)
+            )
+            for instanceId in instanceIds:
+                element = doc.GetElement(instanceId)
+                if COBieIsEnabled(element):
+                    for item in componentParameters:
+                        cobieName = item["cobie"]
+                        SetCDXParameterFromCOBie(
+                            element=element,
+                            cdxGuid=item["guid"],
+                            COBieParameterName=cobieName,
+                        )
+
+        return
+
+
+def CDXParametersToCOBie(doc=None):
     doc = doc or HOST_APP.doc
 
     # Parameter Dictionary

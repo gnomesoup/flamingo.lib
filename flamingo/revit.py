@@ -98,6 +98,12 @@ def CreateProjectParameter(
         category = categories.get_Item(revitCategory)
         categorySet.Insert(category)
 
+    # If the document is a family we can end here
+    if doc.IsFamilyDocument:
+        return doc.FamilyManager.AddParameter(
+            externalDefinition, parameterGroup, not isTypeParameter
+        )
+
     # Create the parameter
     if isTypeParameter:
         newBinding = app.Create.NewTypeBinding(categorySet)

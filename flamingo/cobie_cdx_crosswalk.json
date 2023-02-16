@@ -1,0 +1,219 @@
+{
+    "GSA.01.Facility.GSABuildingCode": {
+        "CDXDescription": "Facility: GSA Building Code",
+        "COBieName": "COBie.Facility.Name",
+        "CDXName": "GSA.01.Facility.GSABuildingCode",
+        "CDXGuid": "7704d27b-55e1-4e0d-a323-be403aee4cdd",
+        "CDXType": "Facility"
+    },
+    "GSA.01.Facility.OmniClass.FacilityCategory": {
+        "CDXDescription": "Facility: OmniClass Category",
+        "COBieName": "COBie.Facility.Category",
+        "CDXName": "GSA.01.Facility.OmniClass.FacilityCategory",
+        "CDXGuid": "a0a94036-dce0-45dc-b25b-b19632ceea23",
+        "CDXType": "Facility"
+    },
+    "GSA.01.Facility.ProjectName": {
+        "CDXDescription": "Facility: Project Name",
+        "COBieName": "COBie.Facility.ProjectName",
+        "CDXName": "GSA.01.Facility.ProjectName",
+        "CDXGuid": "d18b5ea9-0c02-45a4-acd6-d8887a5bbad4",
+        "CDXType": "Facility"
+    },
+    "GSA.01.Facility.SiteName": {
+        "CDXDescription": "Facility: Site Name",
+        "COBieName": "COBie.Facility.SiteName",
+        "CDXName": "GSA.01.Facility.SiteName",
+        "CDXGuid": "52e4ef7a-08fb-44c5-8935-66ba1c2ee94b",
+        "CDXType": "Facility"
+    },
+    "GSA.01.Floor.Name": {
+        "CDXDescription": "Floor: Name",
+        "COBieName": "COBie.Floor.Name",
+        "CDXName": "GSA.01.Floor.Name",
+        "CDXGuid": "1bb202d3-d9e2-428a-8375-ee6d01a98ffa",
+        "CDXType": "Floor"
+    },
+    "GSA.01.Floor.FloorCategory": {
+        "CDXDescription": "Floor: Floor Category",
+        "COBieName": "COBie.Floor.Category",
+        "CDXName": "GSA.01.Floor.FloorCategory",
+        "CDXGuid": "8836acff-ea52-41fe-bc49-8e81d1cd8605",
+        "CDXType": "Floor"
+    },
+    "GSA.02.Space.RoomNumber": {
+        "CDXDescription": "Space: Room Number",
+        "COBieName": "COBie.Space.Name",
+        "CDXName": "GSA.02.Space.RoomNumber",
+        "CDXGuid": "57E67856-3996-4DC3-AD75-4C33A76704A0",
+        "CDXType": "Space"
+    },
+    "GSA.03.Space.OmniClass.SpaceCategory": {
+        "CDXDescription": "Space: OmniClass Space Category",
+        "COBieName": "COBie.Space.Category",
+        "CDXName": "GSA.03.Space.OmniClass.SpaceCategory",
+        "CDXGuid": "00DCCF44-54E8-4290-B386-2C6787C06376",
+        "CDXType": "Space"
+    },
+    "GSA.03.Space.FloorName": {
+        "CDXDescription": "Space: Floor Name",
+        "COBieName": "COBie.Space.FloorName",
+        "CDXName": "GSA.03.Space.FloorName",
+        "CDXGuid": "FC13D9B2-31FE-4B58-A19D-F679C3F641CD",
+        "CDXType": "Space"
+    },
+    "GSA.03.Space.Description": {
+        "CDXDescription": "Space: Description",
+        "COBieName": "COBie.Space.Description",
+        "CDXName": "GSA.03.Space.Description",
+        "CDXGuid": "DF8F1C12-F287-4360-AFBC-CC92B0B56D2A",
+        "CDXType": "Space"
+    },
+    "GSA.05.Space.Signage": {
+        "CDXDescription": "Space: Signage",
+        "COBieName": "COBie.Space.RoomTag",
+        "CDXName": "GSA.05.Space.Signage",
+        "CDXGuid": "28ECE7CD-8818-436D-AF6C-733D3AE0E69B",
+        "CDXType": "Space"
+    },
+    "GSA.03.Space.ZoneName": {
+        "CDXDescription": "Space: Zone Name",
+        "COBieName": "COBie.Zone.Name",
+        "CDXName": "GSA.03.Space.ZoneName",
+        "CDXGuid": "B5DB0243-5AFE-4153-B037-775E21CC57F1",
+        "CDXType": "Space"
+    },
+    "GSA.05.Asset.TypeName": {
+        "CDXDescription": "Asset: Type Name",
+        "COBieName": "COBie.Type.Name",
+        "CDXName": "GSA.05.Asset.TypeName",
+        "CDXGuid": "0798BDCD-761D-4942-8FF2-0E7007F40E6A",
+        "CDXType": "Asset"
+    },
+    "GSA.05.Asset.AssetType.Abbreviation": {
+        "CDXDescription": "Asset: Asset Type Abbreviation",
+        "COBieName": "COBie.Type.Category",
+        "CDXName": "GSA.05.Asset.AssetType.Abbreviation",
+        "CDXGuid": "37791872-234C-4766-9F31-7A3E72050582",
+        "CDXType": "Asset"
+    },
+    "GSA.05.Asset.AssetType.Description": {
+        "CDXDescription": "Asset: Asset Type Description",
+        "COBieName": "COBie.Type.Description",
+        "CDXName": "GSA.05.Asset.AssetType.Description",
+        "CDXGuid": "ACD08F9A-6EAB-4981-8388-14A806DB7DFF",
+        "CDXType": "Asset"
+    },
+    "GSA.05.Asset.Mobility": {
+        "CDXDescription": "Asset: Mobility",
+        "COBieName": "COBie.Type.AssetType",
+        "CDXName": "GSA.05.Asset.Mobility",
+        "CDXGuid": "F5A7AEB6-2216-45BA-B85F-C9E75201F9B2",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.Manufacturer.Email": {
+        "CDXDescription": "Asset: Manufacturer e-mail",
+        "COBieName": "COBie.Type.Manufacturer",
+        "CDXName": "GSA.07.Asset.Manufacturer.Email",
+        "CDXGuid": "639F8842-58BF-48C9-9B00-8C4D2790BA68",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.Model.Number": {
+        "CDXDescription": "Asset: Model Number",
+        "COBieName": "COBie.Type.ModelNumber",
+        "CDXName": "GSA.07.Asset.Model.Number",
+        "CDXGuid": "C20C3645-948F-4846-B80E-93049348FA0C",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.WarrantyDuration.Parts": {
+        "CDXDescription": "Asset: Warranty Duration Parts",
+        "COBieName": "COBie.Type.WarrantyDurationParts",
+        "CDXName": "GSA.07.Asset.WarrantyDuration.Parts",
+        "CDXGuid": "4469578B-15B2-46DF-BA68-45BFA7D53AF7",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.WarrantyDuration.Labor": {
+        "CDXDescription": "Asset: Warranty Duration Labor",
+        "COBieName": "COBie.Type.WarrantyDurationLabor",
+        "CDXName": "GSA.07.Asset.WarrantyDuration.Labor",
+        "CDXGuid": "C9021772-A5C2-471D-B116-3BD710D0FE31",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.WarrantyDuration.Unit": {
+        "CDXDescription": "Asset: Warranty Duration Unit",
+        "COBieName": "COBie.Type.WarrantyDurationUnit",
+        "CDXName": "GSA.07.Asset.WarrantyDuration.Unit",
+        "CDXGuid": "4C4306D4-927C-4CD5-8501-6D58096AC4A3",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.ExpectedLife": {
+        "CDXDescription": "Asset: Expected Life",
+        "COBieName": "COBie.Type.ExpectedLife",
+        "CDXName": "GSA.07.Asset.ExpectedLife",
+        "CDXGuid": "73F20796-C594-4929-A364-F34CBEB0CCD7",
+        "CDXType": "Asset"
+    },
+    "GSA.07.Asset.ExpectedLife.Unit": {
+        "CDXDescription": "Asset: Expected Life Unit",
+        "COBieName": "COBie.Type.DurationUnit",
+        "CDXName": "GSA.07.Asset.ExpectedLife.Unit",
+        "CDXGuid": "E70826DF-0EFA-4F2B-96FA-682DB5E6CDEA",
+        "CDXType": "Asset"
+    },
+    "GSA.06.Asset.InstanceName": {
+        "CDXDescription": "Asset: Instance Name",
+        "COBieName": "COBie.Component.Name",
+        "CDXName": "GSA.06.Asset.InstanceName",
+        "CDXGuid": "E21B3065-6702-4973-9E1F-E3F21EF27581",
+        "CDXType": "Asset"
+    },
+    "GSA.06.Asset.SpaceCode": {
+        "CDXDescription": "Asset: Space Code",
+        "COBieName": "COBie.Component.Space",
+        "CDXName": "GSA.06.Asset.SpaceCode",
+        "CDXGuid": "E2D4398B-F79D-486A-9B23-81614ED9AA84",
+        "CDXType": "Asset"
+    },
+    "GSA.05.Asset.Description": {
+        "CDXDescription": "Asset: Description",
+        "COBieName": "COBie.Component.Description",
+        "CDXName": "GSA.05.Asset.Description",
+        "CDXGuid": "434BE294-6B1A-4B85-A30E-A2986B2AF718",
+        "CDXType": "Asset"
+    },
+    "GSA.09.Asset.SerialNumber": {
+        "CDXDescription": "Asset: Serial Number",
+        "COBieName": "COBie.Component.SerialNumber",
+        "CDXName": "GSA.09.Asset.SerialNumber",
+        "CDXGuid": "E700395C-92AA-4AE8-86A5-5F3EDC67C944",
+        "CDXType": "Asset"
+    },
+    "GSA.09.Asset.InstallationDate": {
+        "CDXDescription": "Asset: Installation Date",
+        "COBieName": "COBie.Component.InstallationDate",
+        "CDXName": "GSA.09.Asset.InstallationDate",
+        "CDXGuid": "AB317582-D3F4-4437-B9BC-2671B0965AD4",
+        "CDXType": "Asset"
+    },
+    "GSA.09.Asset.WarrantyStartDate": {
+        "CDXDescription": "Asset: Warranty Start Date",
+        "COBieName": "COBie.Component.WarrantyStartDate",
+        "CDXName": "GSA.09.Asset.WarrantyStartDate",
+        "CDXGuid": "B46565AA-C5A7-4E6E-AC31-5A2D291846BC",
+        "CDXType": "Asset"
+    },
+    "GSA.06.Asset.SystemName": {
+        "CDXDescription": "Asset: System Name",
+        "COBieName": "COBie.System.Name",
+        "CDXName": "GSA.06.Asset.SystemName",
+        "CDXGuid": "C9711AA6-0A1C-4299-9A46-429F9D6E3517",
+        "CDXType": "Asset"
+    },
+    "GSA.06.Asset.OmniClass.SystemCategory": {
+        "CDXDescription": "Asset: OmniClass System Category",
+        "COBieName": "COBie.System.Category",
+        "CDXName": "GSA.06.Asset.OmniClass.SystemCategory",
+        "CDXGuid": "0CECE43C-75DB-4EFE-85BE-90E4056AB092",
+        "CDXType": "Asset"
+    }
+}
