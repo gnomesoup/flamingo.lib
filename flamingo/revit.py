@@ -746,7 +746,26 @@ def GetViewPhaseFilter(view, doc=None):
     return doc.GetElement(viewPhaseFilterId)
 
 
-def GetElementRooms(element, phase, offset=1.0, projectToLevel=True, doc=None):
+def _TestRoomIntersect(room, solid):
+    from Autodesk.Revit.Exceptions import InvalidOperationException
+
+    LOGGER.debug("room.Number = {}".format(room.Number))
+    roomSolids = GetSolids(room)
+    try:
+        interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
+            roomSolids[0], solid, DB.BooleanOperationsType.Intersect
+        )
+        LOGGER.debug("interSolid.Volume = {}".format(interSolid.Volume))
+        if hasattr(interSolid, "Volume") and abs(interSolid.Volume > 0.000001):
+            return room
+    except InvalidOperationException as e:
+        LOGGER.debug("Error: {}".format(str(e)))
+    return
+
+
+def GetElementRooms(
+    element, phase, rooms=None, offset=1.0, projectToLevel=True, doc=None
+):
     """Find the room in a Revit model that a element is placed in or near.
     The function should find the room if it is located above or within a
     specified offset
@@ -755,6 +774,7 @@ def GetElementRooms(element, phase, offset=1.0, projectToLevel=True, doc=None):
         element (DB.FamilyInstance): Element who's room is to be located
         phase (DB.Phase): The phase of the room that is to be
             matched to the element.
+        rooms (list(DB.SpatialElement)): List of rooms to check
         offset (float, optional): Offset to provide the the room geometry. This
             allows for fuzzy matching of rooms that are close to the element
             but that the element is not directly located in. Defaults to 1.0.
@@ -782,7 +802,7 @@ def GetElementRooms(element, phase, offset=1.0, projectToLevel=True, doc=None):
     if hasattr(element, "Room"):
         room = (element.Room)[phase]
         if room is not None:
-            return room
+            return [room]
 
     # Get the elements bounding box
     elementBoundingBox = element.get_BoundingBox(None)
@@ -800,58 +820,69 @@ def GetElementRooms(element, phase, offset=1.0, projectToLevel=True, doc=None):
         if type(location) == DB.LocationCurve:
             curve = location.Curve
             elementPoint = curve.GetEndPoint(0)
+        elif hasattr(location, "Point"):
+            elementPoint = location.Point
         else:
-            elementPoint = element.Location.Point
+            elementPoint = None
         LOGGER.debug("elementPoint = {}".format(elementPoint))
-        elementLevel = doc.GetElement(element.LevelId)
-        if elementLevel:
-            z = elementLevel.Elevation
-        else:
-            LOGGER.debug("{}: Element has no level")
-            z = elementPoint.Z
-        elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, z))
+        if elementPoint:
+            if hasattr(element, "LevelId"):
+                elementLevel = doc.GetElement(element.LevelId)
+                if elementLevel:
+                    z = elementLevel.Elevation
+            else:
+                z = elementPoint.Z
+                elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, z))
 
     boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(elementOutline)
 
-    rooms = (
-        DB.FilteredElementCollector(doc)
-        .OfCategory(DB.BuiltInCategory.OST_Rooms)
-        .WherePasses(boundingBoxIntersectsFilter)
-        .ToElements()
-    )
+    if rooms:
+        rooms = (
+            DB.FilteredElementCollector(doc)
+            .WherePasses(
+                DB.ElementIdSetFilter(List[DB.ElementId](room.Id for room in rooms))
+            )
+            .WherePasses(boundingBoxIntersectsFilter)
+            .ToElements()
+        )
+    else:
+        rooms = (
+            DB.FilteredElementCollector(doc)
+            .OfCategory(DB.BuiltInCategory.OST_Rooms)
+            .WherePasses(boundingBoxIntersectsFilter)
+            .ToElements()
+        )
     LOGGER.debug("Number of intersecting rooms: {}".format(len(rooms)))
     elementSolids = GetSolids(element)
     matchedRooms = []
-    maxVolume = 0
+    LOGGER.info("Matching room with element solid method")
     for room in rooms:
-        roomSolids = GetSolids(room)
-        interSolid = None
+        roomSolid = GetSolids(room)[0]
         for elementSolid in elementSolids:
-            try:
-                interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
-                    roomSolids[0], elementSolid, DB.BooleanOperationsType.Intersect
-                )
-                if hasattr(interSolid, "Volume") and abs(interSolid.Volume > 0.000001):
-                    if interSolid.Volume > maxVolume:
-                        maxVolume = interSolid.Volume
-                        matchedRooms.append(room)
-            except InvalidOperationException as e:
-                LOGGER.debug("Error: {}".format(str(e)))
+            matchedRoom = _TestRoomIntersect(room, elementSolid)
+            if matchedRoom:
+                matchedRooms.append(matchedRoom)
+
     if not matchedRooms:
+        LOGGER.info("No Matches: Getting dependent elements and trying again")
+        for room in rooms:
+            roomSolid = GetSolids(room)[0]
+            dependentElements = element.GetDependentElements(
+                DB.ElementIntersectsSolidFilter(roomSolid)
+            )
+            LOGGER.debug("len(dependentElements) = {}".format(len(dependentElements)))
+            if dependentElements:
+                matchedRooms.append(room)
+
+    if not matchedRooms:
+        LOGGER.info("No Matches: Resorting to bounding box method")
         elementSolid = MakeSolid(
             elementOutline.MinimumPoint, elementOutline.MaximumPoint
         )
         for room in rooms:
-            try:
-                interSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
-                    roomSolids[0], elementSolid, DB.BooleanOperationsType.Intersect
-                )
-                if hasattr(interSolid, "Volume") and abs(interSolid.Volume > 0.000001):
-                    if interSolid.Volume > maxVolume:
-                        maxVolume = interSolid.Volume
-                        matchedRooms.append(room)
-            except InvalidOperationException as e:
-                LOGGER.debug("Error: {}".format(str(e)))
+            matchedRoom = _TestRoomIntersect(room, elementSolid)
+            if matchedRoom:
+                matchedRooms.append(matchedRoom)
     return matchedRooms
 
 

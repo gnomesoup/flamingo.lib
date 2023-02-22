@@ -632,6 +632,53 @@ def GetElementSymbol(element):
     return
 
 
+def GetCOBieSpaceElements(doc=None, phase=None, cobieParameterId=None):
+    LOGGER.debug("GetCOBieTypeElements")
+    doc = doc or HOST_APP.doc
+    if cobieParameterId is None:
+        sharedParameters = (
+            DB.FilteredElementCollector(doc)
+            .OfClass(DB.SharedParameterElement)
+            .ToElements()
+        )
+        cobieGuid = Guid("a4a71d65-98ff-466f-9c70-d8d281aae297")
+        cobieParameter = [
+            sharedParameter
+            for sharedParameter in sharedParameters
+            if sharedParameter.GuidValue == cobieGuid
+        ][0]
+        cobieParameterId = cobieParameter.Id
+    LOGGER.debug("cobieTypeParameterId = {}".format(cobieParameterId))
+    parameterValueProvider = DB.ParameterValueProvider(cobieParameterId)
+    filterIntegerRule = DB.FilterIntegerRule(
+        parameterValueProvider, DB.FilterNumericEquals(), 1
+    )
+    elementParameterFilter = DB.ElementParameterFilter(filterIntegerRule)
+    multiCategoryFilter = DB.ElementMulticategoryFilter(
+        List[DB.BuiltInCategory](
+            [DB.BuiltInCategory.OST_Rooms, DB.BuiltInCategory.OST_MEPSpaces]
+        )
+    )
+    elements = (
+        DB.FilteredElementCollector(doc)
+        .WherePasses(multiCategoryFilter)
+        .WherePasses(elementParameterFilter)
+        .ToElements()
+    )
+
+    if phase:
+        LOGGER.debug("Filtering by new on phaseId: {}".format(phase.Id.IntegerValue))
+        elements = [
+            element
+            for element in elements
+            if GetParameterValueByName(element, DB.BuiltInParameter.ROOM_PHASE_ID)
+            == phase.Id
+        ]
+
+    LOGGER.debug("COBie Space Element Count: {}".format(len(elements)))
+    return elements
+
+
 def GetCOBieTypeElements(doc=None, cobieTypeParameterId=None):
     LOGGER.debug("GetCOBieTypeElements")
     doc = doc or HOST_APP.doc
