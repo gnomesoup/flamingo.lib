@@ -9,6 +9,7 @@ from flamingo.revit import (
     GetSchedulableFields,
     GetParameterValueByName,
 )
+import json
 from pyrevit import forms, HOST_APP, revit, script
 import re
 from System import Guid
@@ -624,6 +625,8 @@ def GetElementSymbol(element):
     LOGGER.debug("GetElementSymbol")
     if hasattr(element, "WallType"):
         return element.WallType
+    if hasattr(element, "CurtainSystemType"):
+        return element.CurtainSystemType
     elif hasattr(element, "Symbol"):
         return element.Symbol
     elif hasattr(element, "TypeId"):
@@ -868,12 +871,7 @@ def COBieParametersToCDX(doc=None):
         item for item in CDX_PARAMETER_MAP if item["type"] == "Facility"
     ]
 
-    projectInformations = (
-        DB.FilteredElementCollector(doc)
-        .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
-        .ToElements()
-    )
-    projectInformation = projectInformations[0]
+    projectInformation = doc.ProjectInformation
 
     rooms = (
         DB.FilteredElementCollector(doc)
@@ -884,15 +882,7 @@ def COBieParametersToCDX(doc=None):
 
     spaceParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Space"]
 
-    zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
-    try:
-        zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
-        zoneXML = revit.query.get_schema_field_values(projectInformation, zoneSchema)[
-            "Zones"
-        ]
-        zoneList = ET.fromstring(zoneXML)
-    except Exception:
-        zoneList = None
+    zoneList = GetCOBieZones(doc)
 
     levels = (
         DB.FilteredElementCollector(doc)
@@ -994,171 +984,170 @@ def COBieParametersToCDX(doc=None):
         return
 
 
-def CDXParametersToCOBie(doc=None):
+def GetCDXCrosswalkData():
+    import sys
+
+    libraryPath = [path for path in sys.path if path.endswith("\\flamingo.lib")]
+    assert libraryPath, "Library Path not found in sys.path"
+    filePath = "{}\\flamingo\\cobie_cdx_crosswalk.json".format(libraryPath[0])
+    with open(filePath, "r") as f:
+        cdxCrosswalk = json.load(f)
+    return cdxCrosswalk
+
+
+def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
+    from flamingo.extensible_storage import SetSchemaData
+    from datetime import datetime
+
     doc = doc or HOST_APP.doc
 
     # Parameter Dictionary
-    facilityParameters = [
-        item for item in CDX_PARAMETER_MAP if item["type"] == "Facility"
-    ]
+    cdxCrosswalkData = cdxCrosswalkData or GetCDXCrosswalkData()
 
-    projectInformations = (
-        DB.FilteredElementCollector(doc)
-        .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
-        .ToElements()
+    sharedParameters = (
+        DB.FilteredElementCollector(doc).OfClass(DB.SharedParameterElement).ToElements()
     )
-    projectInformation = projectInformations[0]
+    sharedParametersByGuid = {
+        str(sharedParameter.GuidValue).lower(): sharedParameter.Id
+        for sharedParameter in sharedParameters
+    }
 
-    rooms = (
-        DB.FilteredElementCollector(doc)
-        .OfCategory(DB.BuiltInCategory.OST_Rooms)
-        .WhereElementIsNotElementType()
-        .ToElements()
-    )
+    spacesByZoneName = {}
+    for parameterName, data in cdxCrosswalkData.items():
+        message = ""
+        cdxGuid = data["CDXGuid"].lower()
+        cobieName = data["COBieName"]
+        OUTPUT.print_md("## {}".format(parameterName))
+        OUTPUT.print_md("Matches {}".format(cobieName))
+        if cdxGuid not in sharedParametersByGuid:
+            message = "{}\n- Parameter not in model".format(message)
+            continue
+        cobieGuid = data["COBieGuid"]
+        if not cobieGuid and parameterName != "GSA.03.Space.ZoneName":
+            message = "{}\n- COBie parameter not found ({})".format(message, cobieGuid)
+            continue
+        parameterId = sharedParametersByGuid[cdxGuid]
+        elements = (
+            DB.FilteredElementCollector(doc)
+            .WherePasses(DB.ElementParameterFilter(DB.HasValueFilterRule(parameterId)))
+            .ToElements()
+        )
+        for element in elements:
+            elementIdBold = "**{}**".format(element.Id)
+            value = GetParameterValueByName(element, Guid(cdxGuid))
+            if parameterName == "GSA.03.Space.ZoneName":
+                message = "{}\n- {}: Collecting zone info".format(
+                    message, elementIdBold
+                )
+                if not COBieIsEnabled(element):
+                    continue
+                if value in spacesByZoneName:
+                    spaceList = spacesByZoneName[value]
+                    spacesByZoneName[value].append(element.UniqueId)
+                else:
+                    spacesByZoneName[value] = [element.UniqueId]
+                continue
+            oldValue = GetParameterValueByName(element, Guid(cobieGuid))
+            if not value and not oldValue:
+                message = "{}\n- {}: Values are blank".format(message, elementIdBold)
+            elif value == oldValue:
+                message = '{}\n- {}: Values are equal ("{}")'.format(
+                    message, elementIdBold, value
+                )
+            else:
+                message = '{}\n- {}: "{}" -> "{}"'.format(
+                    message, elementIdBold, value, oldValue
+                )
+                try:
+                    SetParameter(element, Guid(cobieGuid), value)
+                except Exception as e:
+                    LOGGER.warn(
+                        "Error setting value to {} for {}: {}".format(
+                            cobieName, element.Id, e
+                        )
+                    )
+        OUTPUT.print_md(message)
 
-    spaceParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Space"]
+    if spacesByZoneName:
+        OUTPUT.print_md("## Building COBie zone data")
+        currentZoneXML = GetCOBieZones(doc)
+        dateTime = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        LOGGER.warn("dateTime = {}".format(dateTime))
+        currentZones = {}
+        for zone in currentZoneXML:
+            currentZones[zone.attrib["Name"]] = {
+                "ID": zone.attrib["ID"],
+                "ExternalID": zone.attrib["ExternalID"],
+                "Description": zone.attrib["Description"],
+                "CreatedBy": zone.attrib["CreatedBy"],
+                "CreatedOn": zone.attrib["CreatedOn"],
+                "Category": zone.attrib["Category"],
+            }
 
+        zoneXML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        zoneXML = "{}<ZoneList>".format(zoneXML)
+        for zoneName, spaceGuids in spacesByZoneName.items():
+            if zoneName in currentZones:
+                currentZoneData = currentZones[zoneName]
+                zoneXML = (
+                    '{zoneXML}<Zone ID="{id}" ExternalID="{externalId}" Name="{name}" '
+                    'Description="{description}" CreatedBy="{createdBy}" '
+                    'CreatedOn="{createdOn}" Category="{category}">'.format(
+                        zoneXML=zoneXML,
+                        id=currentZoneData["ID"],
+                        externalId=currentZoneData["ExternalID"],
+                        name=zoneName,
+                        description=currentZoneData['Description'],
+                        createdBy=currentZoneData["CreatedBy"],
+                        createdOn=currentZoneData["CreatedOn"],
+                        category=currentZoneData["Category"],
+                    )
+                )
+            else:
+                newGuid = Guid.NewGuid()
+                zoneXML = (
+                    '{}<Zone ID="{}" ExternalID="{}" Name="{}" '
+                    'Description="{}" CreatedBy="{}" CreatedOn="{}" '
+                    'Category="{}">'.format(
+                        zoneXML,
+                        newGuid,
+                        newGuid,
+                        zoneName,
+                        zoneName,
+                        "mpfammatter@ks.partners",
+                        dateTime,
+                        "Circulation Zone",
+                    )
+                )
+            for spaceGuid in spaceGuids:
+                zoneXML = '{}<Space ID="{}" />'.format(zoneXML, spaceGuid)
+            zoneXML = "{}</Zone>".format(zoneXML)
+        zoneXML = "{}</ZoneList>".format(zoneXML)
+        print(zoneXML)
+        zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
+        zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
+        projectInformation = doc.ProjectInformation
+        try:
+            zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
+            SetSchemaData(zoneSchema, "Zones", projectInformation, zoneXML)
+        except Exception as e:
+            LOGGER.warn("Unable to save COBie zone data: {}".format(e))
+
+    return
+
+
+def GetCOBieZones(doc=None):
+    projectInformation = doc.ProjectInformation
     zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
     try:
         zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
         zoneXML = revit.query.get_schema_field_values(projectInformation, zoneSchema)[
             "Zones"
         ]
-        zoneList = ET.fromstring(zoneXML)
-    except Exception:
-        zoneList = None
-
-    levels = (
-        DB.FilteredElementCollector(doc)
-        .OfCategory(DB.BuiltInCategory.OST_Levels)
-        .WhereElementIsNotElementType()
-        .ToElements()
-    )
-    floorParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Floor"]
-
-    cobieTypes = revit.query.get_elements_by_parameter("COBie.Type", 1, doc=doc)
-    typeParameters = [item for item in CDX_PARAMETER_MAP if item["type"] == "Type"]
-    componentParameters = [
-        item for item in CDX_PARAMETER_MAP if item["type"] == "Component"
-    ]
-
-    with revit.Transaction("Set CDX from COBie"):
-        SetParameter(
-            projectInformation,
-            "07c80000-aef8-4fb1-8e88-994372265bc2",
-            HOST_APP.version_name,
-        )
-
-        unitsParameter = projectInformation.get_Parameter(
-            Guid("99b55570-50da-4f79-9155-b4e41adc0283")
-        )
-        unitsParameter.Set(
-            "Imperial" if doc.DisplayUnitSystem == DB.DisplayUnit.IMPERIAL else "Metric"
-        )
-
-        for item in facilityParameters:
-            SetCDXParameterFromCOBie(
-                element=projectInformation,
-                cdxGuid=item["guid"],
-                COBieParameterName=item["cobie"],
-            )
-
-        for zone in zoneList:
-            zoneName = zone.attrib["Name"]
-            for space in zone:
-                if True:
-                    room = doc.GetElement(space.attrib["ID"])
-                    if room:
-                        zoneParameter = room.get_Parameter(
-                            Guid("B5DB0243-5AFE-4153-B037-775E21CC57F1")
-                        )
-                        zoneParameter.Set(zoneName)
-
-        for room in rooms:
-            for item in spaceParameters:
-                if COBieIsEnabled(room):
-                    cobieName = item["cobie"]
-                    SetCDXParameterFromCOBie(
-                        element=room,
-                        cdxGuid=item["guid"],
-                        COBieParameterName=cobieName,
-                    )
-
-        for level in levels:
-            levelIdMatch = re.findall(r"(\d{1,3})", level.Name)
-            if levelIdMatch:
-                levelId = levelIdMatch[0]
-            else:
-                continue
-            levelIdParameter = level.get_Parameter(
-                Guid("12379615-bbe6-46de-9f58-572d56b75142")
-            )
-            levelIdParameter.Set(levelId)
-            for item in floorParameters:
-                if COBieIsEnabled(level):
-                    cobieName = item["cobie"]
-                    SetCDXParameterFromCOBie(
-                        element=level,
-                        cdxGuid=item["guid"],
-                        COBieParameterName=cobieName,
-                    )
-
-        for cobieType in cobieTypes:
-            for item in typeParameters:
-                cobieName = item["cobie"]
-                SetCDXParameterFromCOBie(
-                    element=cobieType,
-                    cdxGuid=item["guid"],
-                    COBieParameterName=cobieName,
-                )
-            instanceIds = cobieType.GetDependentElements(
-                DB.ElementClassFilter(DB.FamilyInstance)
-            )
-            for instanceId in instanceIds:
-                element = doc.GetElement(instanceId)
-                if COBieIsEnabled(element):
-                    for item in componentParameters:
-                        cobieName = item["cobie"]
-                        SetCDXParameterFromCOBie(
-                            element=element,
-                            cdxGuid=item["guid"],
-                            COBieParameterName=cobieName,
-                        )
-
-        return
-
-
-def GetCDXSpaceCUIValues(doc=None):
-    doc = doc or HOST_APP.doc
-    cuiData = []
-
-    rooms = (
-        DB.FilteredElementCollector(doc)
-        .OfCategory(DB.BuiltInCategory.OST_Rooms)
-        .WhereElementIsNotElementType()
-        .ToElements()
-    )
-
-    for room in rooms:
-        if COBieIsEnabled(room):
-            cuiParameter = room.LookupParameter("GSA.05.Space.CUI-SBU")
-            if cuiParameter:
-                cuiData.append(
-                    {
-                        "roomElement": room,
-                        "cuiValue": cuiParameter.AsString(),
-                        "roomNumber": room.Number,
-                        "roomName": revit.query.get_name(room),
-                    }
-                )
-    return cuiData
-
-
-def SetCDXSpaceCUIValue(room, value):
-    cuiParameter = room.LookupParameter("GSA.05.Space.CUI-SBU")
-    if cuiParameter:
-        cuiParameter.Set(value)
-    return room
+        return ET.fromstring(zoneXML)
+    except Exception as e:
+        LOGGER.warn("Unable to acquire COBie zone data: {}".format(e))
+    return
 
 
 def GetCDXSpaceBOMAValues(doc=None):
