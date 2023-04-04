@@ -14,7 +14,6 @@ from pyrevit import forms, HOST_APP, revit, script
 import re
 from System import Guid
 from System.Collections.Generic import List
-from xml.etree import ElementTree as ET
 
 LOGGER = script.get_logger()
 OUTPUT = script.get_output()
@@ -919,6 +918,8 @@ def COBieParametersToCDX(doc=None):
                 COBieParameterName=item["cobie"],
             )
 
+        if not zoneList:
+            zoneList = []
         for zone in zoneList:
             zoneName = zone.attrib["Name"]
             for space in zone:
@@ -1071,8 +1072,9 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
     if spacesByZoneName:
         OUTPUT.print_md("## Building COBie zone data")
         currentZoneXML = GetCOBieZones(doc)
+        LOGGER.warn("currentZoneXML = {}".format(currentZoneXML))
         dateTime = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        LOGGER.warn("dateTime = {}".format(dateTime))
+        LOGGER.debug("dateTime = {}".format(dateTime))
         currentZones = {}
         for zone in currentZoneXML:
             currentZones[zone.attrib["Name"]] = {
@@ -1137,13 +1139,17 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
 
 
 def GetCOBieZones(doc=None):
+    from xml.etree import ElementTree as ET
+    # from pyrevit.framework import IList
     projectInformation = doc.ProjectInformation
     zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
     try:
         zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
-        zoneXML = revit.query.get_schema_field_values(projectInformation, zoneSchema)[
-            "Zones"
-        ]
+        entity = projectInformation.GetEntity(zoneSchema)
+        if not entity:
+            return
+        zoneXML = None
+        zoneXML = entity.Get[str]("Zones")
         return ET.fromstring(zoneXML)
     except Exception as e:
         LOGGER.warn("Unable to acquire COBie zone data: {}".format(e))
