@@ -260,7 +260,7 @@ def COBieParameterIsBlank(element, parameterName):
 
     Args:
         element (DB.Element): Revit element who's parameter is to be checked
-        parameterName (str): Name of the parmater who's value is to be checked
+        parameterName (str): Name of the parameter who's value is to be checked
 
     Returns:
         bool: True if the parameter value is blank. False otherwise.
@@ -418,36 +418,42 @@ def COBieComponentAssignMarks(view, doc=None):
                         break
 
 
-def COBieParameterBlankOut(scheduleList, elements=None, doc=None):
-    """Clears values for selected COBie paramaters. This is helpful for values
-    that are not required at particular time points, like Manufacture at the CD
-    project phase.
+def ParameterBlankOut(elements, parameterFilter=None, doc=None):
+    """Clears values for selected parameters.
 
     Args:
-        scheduleList (list[DB.ViewSchedule]): List of schedules to operate on
         elements (list[DB.Elements]): List of Revit elements to operate on. If not
             included, all elements that have the parameter will be blanked out.
+        parameterFilter (regex str): Regex string to narrow down parameters to offer
         doc (DB.Document, optional): Revit document that hosts the parameters to
             be blanked out. Defaults to None.
     """
-    # TODO Only attempt to change a family symbol once
-    # TODO Only operate on elements that have the "COBie" or "COBie.Type"
-    #      parameters checked
     if doc is None:
         doc = HOST_APP.doc
-    scheduledParameters = {}
-    groupedParameterNames = {}
-    for schedule in scheduleList:
-        parameterIds = GetScheduledParameterIds(schedule)
-        parameterNames = []
-        for parameterId in parameterIds:
-            if parameterId is not None and parameterId.IntegerValue > 0:
-                parameter = doc.GetElement(parameterId)
-                scheduledParameters[parameter.Name] = parameterId
-                parameterNames.append(parameter.Name)
-        groupedParameterNames[schedule.Name] = parameterNames
+    parameters = {}
+    for element in elements:
+        for parameter in element.Parameters:
+            if not parameter.UserModifiable:
+                continue
+            if hasattr(parameter, "GUID"):
+                getId = parameter.GUID
+            else:
+                getId = parameter.Definition.BuiltInParameter
+            definition = parameter.Definition
+            if definition.Name not in parameters:
+                parameters[definition.Name] = getId
+        elementSymbol = GetElementSymbol(element)
+        if elementSymbol:
+            for parameter in elementSymbol.Parameters:
+                if hasattr(parameter, "GUID"):
+                    getId = parameter.GUID
+                else:
+                    getId = parameter.Definition.BuiltInParameter
+                definition = parameter.Definition
+                if definition.Name not in parameters:
+                    parameters[definition.Name] = getId
     parameterNamesOut = forms.SelectFromList.show(
-        sorted(scheduledParameters.keys()),
+        sorted(parameters.keys()),
         multiselect=True,
         group_selector_title="COBie Schedule",
         button_name="Select Parameters",
@@ -456,43 +462,12 @@ def COBieParameterBlankOut(scheduleList, elements=None, doc=None):
     if not parameterNamesOut:
         script.exit()
 
-    if elements:
-        elementIds = [element.Id for element in elements]
-        elementTypes = [GetElementSymbol(element) for element in elements]
-        elementTypeIds = set(element.Id for element in elementTypes)
-    else:
-        elementIds = None
-        elementTypeIds = None
-    bindings = doc.ParameterBindings
-    with revit.Transaction("COBie Parameter Blank Out"):
-        for parameterName in parameterNamesOut:
-            parameterId = scheduledParameters[parameterName]
-            parameter = doc.GetElement(parameterId)
-            definition = parameter.GetDefinition()
-            parameterBinding = bindings.get_Item(definition)
-            parameterValueProvider = DB.ParameterValueProvider(parameterId)
-            filterStringRule = DB.FilterStringRule(
-                parameterValueProvider, DB.FilterStringGreater(), "", True
-            )
-            elementParameterFilter = DB.ElementParameterFilter(filterStringRule)
-            if type(parameterBinding) is DB.TypeBinding:
-                collector = DB.FilteredElementCollector(doc).WhereElementIsElementType()
-                if elementTypeIds:
-                    collector.WherePasses(
-                        DB.ElementIdSetFilter(List[DB.ElementId](elementTypeIds))
-                    )
-            else:
-                collector = DB.FilteredElementCollector(
-                    doc
-                ).WhereElementIsNotElementType()
-                if elementIds:
-                    collector.WherePasses(
-                        DB.ElementIdSetFilter(List[DB.ElementId](elementIds))
-                    )
-            elements = collector.WherePasses(elementParameterFilter).ToElements()
-
-            for element in elements:
-                elementParameter = element.get_Parameter(parameter.GuidValue)
+    with revit.Transaction("Parameter Blank Out"):
+        for element in elements:
+            for parameterName in parameterNamesOut:
+                elementParameter = element.get_Parameter(parameters[parameterName])
+                if not elementParameter:
+                    continue
                 elementParameter.Set("")
 
 
@@ -630,7 +605,7 @@ def GetElementSymbol(element):
         return element.Symbol
     elif hasattr(element, "TypeId"):
         return element.Document.GetElement(element.TypeId)
-    LOGGER.warn("{} Unable to get symbol".format(OUTPUT.linkify(element.Id)))
+    LOGGER.info("{} Unable to get symbol".format(OUTPUT.linkify(element.Id)))
     return
 
 
@@ -996,6 +971,25 @@ def GetCDXCrosswalkData():
     return cdxCrosswalk
 
 
+def SetCOBieCreatedByOn(element, userEmail, blankOnly=None, doc=None):
+    from datetime import datetime
+    doc = doc or HOST_APP.doc
+    blankOnly = blankOnly or True
+    cobieCreatedByGuid = Guid("fc95531f-3d82-40c6-b03f-c6a7cf97b828")
+    cobieCreatedOnGuid = Guid("4b888e29-dfb5-4b06-a270-9d59c62e6077")
+    if not blankOnly or COBieParameterIsBlank(element, cobieCreatedByGuid):
+        try:
+            SetParameter(element, cobieCreatedByGuid, userEmail)
+        except Exception as e:
+            LOGGER.warn("Error setting CreatedBy to element: {}".format(element.Id))
+    if not blankOnly or COBieParameterIsBlank(element, cobieCreatedOnGuid):
+        try:
+            dateTime = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            SetParameter(element, cobieCreatedOnGuid, dateTime)
+        except Exception as e:
+            LOGGER.warn("Error setting CreatedOn to element: {}".format(element.Id))
+    return
+
 def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
     from flamingo.extensible_storage import SetSchemaData
     from datetime import datetime
@@ -1014,6 +1008,7 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
     }
 
     spacesByZoneName = {}
+    updatedElementIds = set()
     for parameterName, data in cdxCrosswalkData.items():
         message = ""
         cdxGuid = data["CDXGuid"].lower()
@@ -1061,6 +1056,7 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
                 )
                 try:
                     SetParameter(element, Guid(cobieGuid), value)
+                    updatedElementIds.add(element.Id)
                 except Exception as e:
                     LOGGER.warn(
                         "Error setting value to {} for {}: {}".format(
@@ -1125,7 +1121,6 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
                 zoneXML = '{}<Space ID="{}" />'.format(zoneXML, spaceGuid)
             zoneXML = "{}</Zone>".format(zoneXML)
         zoneXML = "{}</ZoneList>".format(zoneXML)
-        print(zoneXML)
         zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
         zoneSchema = DB.ExtensibleStorage.Schema.Lookup(Guid(zoneSchemaGUID))
         projectInformation = doc.ProjectInformation
@@ -1135,7 +1130,7 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
         except Exception as e:
             LOGGER.warn("Unable to save COBie zone data: {}".format(e))
 
-    return
+    return updatedElementIds
 
 
 def GetCOBieZones(doc=None):
