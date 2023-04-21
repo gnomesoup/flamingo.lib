@@ -461,7 +461,7 @@ def DoorRenameByRoomNumber(
     suffixList=None,
     doc=None,
 ):
-    """[summary]
+    """Utility to automatically assign door numbers based on room numbers.
 
     Args:
         doors (list[DB.Elements]): List of Revit doors to renumber.
@@ -493,9 +493,10 @@ def DoorRenameByRoomNumber(
         .WhereElementIsNotElementType()
         .ToElements()
     )
+    selectedDoorIds = [door.Id for door in doors]
 
     # Make a dictionary of rooms with door properties
-    roomDoors = {}
+    doorsByRoom = {}
     for door in allDoors:
         if not door:
             continue
@@ -505,42 +506,44 @@ def DoorRenameByRoomNumber(
         except Exception as e:
             continue
         if toRoom:
-            if toRoom.Id in roomDoors:
-                roomDoors[toRoom.Id]["doors"] = roomDoors[toRoom.Id]["doors"] + [
+            if toRoom.Id in doorsByRoom:
+                doorsByRoom[toRoom.Id]["doors"] = doorsByRoom[toRoom.Id]["doors"] + [
                     door.Id
                 ]
             else:
                 roomsToAdd.append(toRoom)
         fromRoom = (door.FromRoom)[phase]
         if fromRoom:
-            if fromRoom.Id in roomDoors:
-                roomDoors[fromRoom.Id]["doors"] = roomDoors[fromRoom.Id]["doors"] + [
-                    door.Id
-                ]
+            if fromRoom.Id in doorsByRoom:
+                doorsByRoom[fromRoom.Id]["doors"] = doorsByRoom[fromRoom.Id][
+                    "doors"
+                ] + [door.Id]
             else:
                 roomsToAdd.append(fromRoom)
         for roomToAdd in roomsToAdd:
-            roomDoors[roomToAdd.Id] = {"doors": [door.Id]}
-            roomDoors[roomToAdd.Id]["roomNumber"] = roomToAdd.Number
-            roomDoors[roomToAdd.Id]["roomArea"] = roomToAdd.Area
             roomCenter = roomToAdd.Location.Point
-            roomDoors[roomToAdd.Id]["roomLocation"] = roomCenter
+            doorsByRoom[roomToAdd.Id] = {
+                "doors": [door.Id],
+                "roomNumber": roomToAdd.Number,
+                "roomArea": roomToAdd.Area,
+                "roomLocation": roomCenter,
+            }
 
     # Make a dictionary of door connection counts. This will be used to
     # prioritize doors with more connections when assigning a letter value
-    roomDoorsDoors = [value["doors"] for value in roomDoors.values()]
+    doorsByRoomDoors = [value["doors"] for value in doorsByRoom.values()]
     doorConnectors = {}
     for door in allDoors:
-        for i in roomDoorsDoors:
+        for i in doorsByRoomDoors:
             if door.Id in i:
                 if door.Id in doorConnectors:
                     doorConnectors[door.Id] += len(i)
                 else:
                     doorConnectors[door.Id] = len(i)
 
-    maxLength = max([len(values["doors"]) for values in roomDoors.values()])
-    for key, values in roomDoors.items():
-        roomDoors[key]["doorCount"] = len(values["doors"])
+    maxLength = max([len(values["doors"]) for values in doorsByRoom.values()])
+    for key, values in doorsByRoom.items():
+        doorsByRoom[key]["doorCount"] = len(values["doors"])
 
     # Number doors
     doorCount = len(doors)
@@ -558,16 +561,18 @@ def DoorRenameByRoomNumber(
                 break
             noRooms = True
             roomsThisRound = [
-                roomId for roomId, value in roomDoors.items() if value["doorCount"] == i
+                roomId
+                for roomId, value in doorsByRoom.items()
+                if value["doorCount"] == i
             ]
             roomsThisRound = sorted(
-                roomsThisRound, key=lambda x: roomDoors[x]["roomArea"]
+                roomsThisRound, key=lambda x: doorsByRoom[x]["roomArea"]
             )
             # Go through each room and look for door counts that match
             # current level
-            # for key, values in roomDoors.items():
+            # for key, values in doorsByRoom.items():
             for roomId in roomsThisRound:
-                values = roomDoors[roomId]
+                values = doorsByRoom[roomId]
                 if values["doorCount"] == i:
                     noRooms = False
                     doorIds = values["doors"]
@@ -597,11 +602,12 @@ def DoorRenameByRoomNumber(
                             # print("{}: {} {} rad | {} ratio".format(mark, doorVector, angle, angleNormalized))
                         else:
                             mark = values["roomNumber"]
-                        markParameter = door.get_Parameter(
-                            DB.BuiltInParameter.ALL_MODEL_MARK
-                        )
-                        markParameter.Set(mark)
-            for roomId, values in roomDoors.items():
+                        if door.Id in selectedDoorIds:
+                            markParameter = door.get_Parameter(
+                                DB.BuiltInParameter.ALL_MODEL_MARK
+                            )
+                            markParameter.Set(mark)
+            for roomId, values in doorsByRoom.items():
                 unNumberedDoors = filter(
                     None,
                     [
@@ -610,8 +616,8 @@ def DoorRenameByRoomNumber(
                         if doorId not in numberedDoors
                     ],
                 )
-                roomDoors[roomId]["doors"] = unNumberedDoors
-                roomDoors[roomId]["doorCount"] = len(unNumberedDoors)
+                doorsByRoom[roomId]["doors"] = unNumberedDoors
+                doorsByRoom[roomId]["doorCount"] = len(unNumberedDoors)
             if noRooms:
                 i += 1
             n += 1
@@ -799,6 +805,13 @@ def GetElementRooms(
         doc = HOST_APP.doc
 
     # Check if element self reports room
+    if hasattr(element, "ToRoom"):
+        rooms = [(element.ToRoom)[phase]]
+        fromRoom = (element.FromRoom)[phase]
+        if fromRoom:
+            rooms.append(fromRoom)
+        if rooms:
+            return rooms
     if hasattr(element, "Room"):
         room = (element.Room)[phase]
         if room is not None:
