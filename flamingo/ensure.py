@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from Autodesk.Revit import DB
 import clr
-from flamingo.revit import OpenDetached
+from flamingo.revit import OpenDetached, CreateProjectParameter
 from os import path
 from pyrevit import HOST_APP, revit, forms, PyRevitException
 from pyrevit.coreutils.logger import get_logger
@@ -172,3 +172,27 @@ def EnsureLibraryFamily(familyName, revitVersion=None, doc=None):
             msg="Could not load required note placeholder family", exitscript=True
         )
         return None
+
+
+def EnsureFamilyHasSharedParameter(parameterGUID, doc=None):
+    doc = doc or HOST_APP.doc
+    familyCategory = doc.OwnerFamily.FamilyCategory
+    builtInCategory = revit.query.get_builtincategory(familyCategory.Id)
+    revitCategories = [builtInCategory]
+    parameterGroup = DB.BuiltInParameterGroup.PG_IDENTITY_DATA
+    familyParameters = {
+        parameter.GUID: parameter
+        for parameter in doc.FamilyManager.GetParameters()
+        if hasattr(parameter, "GUID")
+    }
+    try:
+        if parameterGUID in familyParameters:
+            return familyParameters[parameterGUID]
+
+        else:
+            return CreateProjectParameter(
+                parameterGUID, "Authoring", revitCategories, parameterGroup, doc=doc
+            )
+    except Exception as e:
+        LOGGER.warn("EnsureFamilyHasSharedParameter Error: {}".format(e))
+        return
