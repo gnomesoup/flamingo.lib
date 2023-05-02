@@ -1332,3 +1332,89 @@ def GetLinkLoadTimes(logFilePath=None, doc=None):
                 else:
                     out[activeDocumentPath] = {m.group(1): timestamp}
     return out
+
+
+def OperateOnNestedFamilies(
+    families,
+    function,
+    includeShared=True,
+    doc=None,
+    nestLevel=None,
+    closeDocs=True,
+    maxNest=32,
+    **kwargs
+):
+    """Takes a function and applies it to the provided families and all families
+    nested within. Shared families will only be processed once and loaded into the
+    the primary upstream host family. The function that is passed to the family must
+    include a 'doc' parameter to pass the opened family document (Autodesk.DB.Document).
+    If an transaction is required, it should be included in the passed function. Do not
+    nest this function in another transaction.
+
+    Args:
+        families (list(DB.Family)): List of families to operate on
+        function (func): Function applied to each family and nest
+        includeShared (bool, optional): Process shared families. Defaults to True.
+        doc (Autodesk.Revit.DB.Document, optional): Document of host. Can be a family
+            or project document. Defaults to active Revit document.
+        nestLevel (int, optional): Current level of family nesting. Defaults to 0.
+        closeDocs (bool, optional): Close the documents after processing is complete.
+            Defaults to True.
+    """
+
+    openedFamilyDocs = []
+    doc = doc or HOST_APP.doc
+    nestLevel = nestLevel or 0
+    prefix = "\t" * nestLevel
+    LOGGER.debug("{}OperateOnNestedFamilies: Nest level {}".format(prefix, nestLevel))
+    LOGGER.debug("{}includeShared = {}".format(prefix, includeShared))
+    for family in families:
+        if nestLevel > maxNest:
+            raise PyRevitException(
+                "Reached max nest level of {}. If more nesting is required"
+                ' set the "maxNest" parameter'.format(maxNest)
+            )
+        LOGGER.debug("{}family.Name = {}".format(prefix, family.Name))
+        if "{}.rfa".format(family.Name) == doc.Title:
+            LOGGER.warn(
+                "Nested family \"{}\" has the same name as the host causing a "
+                "circular reference".format(family.Name)
+            )
+            continue
+        if not family.IsEditable:
+            LOGGER.debug("{}Family is not editable".format(prefix))
+            continue
+        isShared = family.get_Parameter(DB.BuiltInParameter.FAMILY_SHARED).AsInteger()
+        LOGGER.debug("{}isShared = {}".format(prefix, isShared))
+        if not includeShared and isShared:
+            LOGGER.debug("{}Skipping shared family".format(prefix))
+            continue
+        familyDoc = family.Document.EditFamily(family)
+        LOGGER.debug("{}familyDoc.Title = {}".format(prefix, familyDoc.Title))
+        openedFamilyDocs.append(familyDoc)
+        function(doc=familyDoc, **kwargs)
+        nestedFamilies = (
+            DB.FilteredElementCollector(familyDoc).OfClass(DB.Family).ToElements()
+        )
+        if nestedFamilies:
+            openedFamilyDocsFromNests = OperateOnNestedFamilies(
+                nestedFamilies,
+                function,
+                doc=familyDoc,
+                includeShared=False,
+                nestLevel=nestLevel + 1,
+                closeDocs=False,
+                **kwargs
+            )
+            if openedFamilyDocsFromNests:
+                openedFamilyDocs = openedFamilyDocs + openedFamilyDocsFromNests
+
+        LOGGER.debug("{}Loading family back in: {}".format(prefix, familyDoc.Title))
+        familyDoc.LoadFamily(doc, iFamilyLoadOptions())
+    if closeDocs:
+        for familyDoc in openedFamilyDocs:
+            try:
+                familyDoc.Close(False)
+            except Exception as e:
+                LOGGER.debug("{}Unable to close family: {}".format(prefix, e))
+    return
