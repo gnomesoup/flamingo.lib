@@ -1337,11 +1337,12 @@ def GetLinkLoadTimes(logFilePath=None, doc=None):
 def OperateOnNestedFamilies(
     families,
     function,
+    familyRenameFunction=None,
     includeShared=True,
     doc=None,
     nestLevel=None,
-    closeDocs=True,
     maxNest=32,
+    closeDocs=True,
     **kwargs
 ):
     """Takes a function and applies it to the provided families and all families
@@ -1358,11 +1359,14 @@ def OperateOnNestedFamilies(
         doc (Autodesk.Revit.DB.Document, optional): Document of host. Can be a family
             or project document. Defaults to active Revit document.
         nestLevel (int, optional): Current level of family nesting. Defaults to 0.
+        maxNest (int, optional): Maximum level of nested families to recurse. Defaults
+            to 32.
         closeDocs (bool, optional): Close the documents after processing is complete.
             Defaults to True.
     """
 
-    openedFamilyDocs = []
+    processedFamilyIds = []
+    swallowedErrors = []
     doc = doc or HOST_APP.doc
     nestLevel = nestLevel or 0
     prefix = "\t" * nestLevel
@@ -1389,32 +1393,47 @@ def OperateOnNestedFamilies(
         if not includeShared and isShared:
             LOGGER.debug("{}Skipping shared family".format(prefix))
             continue
-        familyDoc = family.Document.EditFamily(family)
+        with revit.ErrorSwallower() as swallower:
+            familyDoc = family.Document.EditFamily(family)
+            swallowedErrors = swallower.get_swallowed_errors()
+            if swallowedErrors:
+                msg = "\n".join(
+                    [error.GetDescriptionText() for error in swallowedErrors]
+                )
+                msg = "{}\n{}".format(OUTPUT.linkify(family.Id), msg)
+                LOGGER.warn(msg)
+                swallowedErrors.append(msg)
         LOGGER.debug("{}familyDoc.Title = {}".format(prefix, familyDoc.Title))
-        openedFamilyDocs.append(familyDoc)
-        function(doc=familyDoc, **kwargs)
+        function(doc=familyDoc, nestLevel=nestLevel, **kwargs)
+        processedFamilyIds.append(family.Id)
         nestedFamilies = (
             DB.FilteredElementCollector(familyDoc).OfClass(DB.Family).ToElements()
         )
+        LOGGER.warn("familyRenameFunction = {}".format(familyRenameFunction))
         if nestedFamilies:
-            openedFamilyDocsFromNests = OperateOnNestedFamilies(
+            if familyRenameFunction:
+                for nestedFamily in nestedFamilies:
+                    familyRenameFunction(nestedFamily)
+            processedFamilyIdsFromNests = OperateOnNestedFamilies(
                 nestedFamilies,
                 function,
                 doc=familyDoc,
                 includeShared=False,
                 nestLevel=nestLevel + 1,
-                closeDocs=False,
+                closeDocs=True,
                 **kwargs
             )
-            if openedFamilyDocsFromNests:
-                openedFamilyDocs = openedFamilyDocs + openedFamilyDocsFromNests
+            if processedFamilyIdsFromNests:
+                processedFamilyIds = processedFamilyIds + processedFamilyIdsFromNests
 
         LOGGER.debug("{}Loading family back in: {}".format(prefix, familyDoc.Title))
         familyDoc.LoadFamily(doc, iFamilyLoadOptions())
-    if closeDocs:
-        for familyDoc in openedFamilyDocs:
+        if closeDocs:
             try:
                 familyDoc.Close(False)
+                LOGGER.debug("Document Closed")
             except Exception as e:
-                LOGGER.debug("{}Unable to close family: {}".format(prefix, e))
-    return
+                LOGGER.warn("{}Unable to close family: {}".format(prefix, e))
+    for error in swallowedErrors:
+        print(error)
+    return processedFamilyIds
