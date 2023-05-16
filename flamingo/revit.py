@@ -1363,9 +1363,12 @@ def OperateOnNestedFamilies(
             to 32.
         closeDocs (bool, optional): Close the documents after processing is complete.
             Defaults to True.
+
+    Returns:
+        List of family names that where processed (list[str])
     """
 
-    processedFamilyIds = []
+    processedFamilyNames = []
     swallowedErrors = []
     doc = doc or HOST_APP.doc
     nestLevel = nestLevel or 0
@@ -1381,7 +1384,7 @@ def OperateOnNestedFamilies(
         LOGGER.debug("{}family.Name = {}".format(prefix, family.Name))
         if "{}.rfa".format(family.Name) == doc.Title:
             LOGGER.warn(
-                "Nested family \"{}\" has the same name as the host causing a "
+                'Nested family "{}" has the same name as the host causing a '
                 "circular reference".format(family.Name)
             )
             continue
@@ -1405,26 +1408,28 @@ def OperateOnNestedFamilies(
                 swallowedErrors.append(msg)
         LOGGER.debug("{}familyDoc.Title = {}".format(prefix, familyDoc.Title))
         function(doc=familyDoc, nestLevel=nestLevel, **kwargs)
-        processedFamilyIds.append(family.Id)
+        processedFamilyNames.append(family.Name)
         nestedFamilies = (
             DB.FilteredElementCollector(familyDoc).OfClass(DB.Family).ToElements()
         )
-        LOGGER.warn("familyRenameFunction = {}".format(familyRenameFunction))
         if nestedFamilies:
             if familyRenameFunction:
                 for nestedFamily in nestedFamilies:
                     familyRenameFunction(nestedFamily)
-            processedFamilyIdsFromNests = OperateOnNestedFamilies(
+            processedFamilyNamesFromNests = OperateOnNestedFamilies(
                 nestedFamilies,
                 function,
+                familyRenameFunction=familyRenameFunction,
                 doc=familyDoc,
                 includeShared=False,
                 nestLevel=nestLevel + 1,
                 closeDocs=True,
                 **kwargs
             )
-            if processedFamilyIdsFromNests:
-                processedFamilyIds = processedFamilyIds + processedFamilyIdsFromNests
+            if processedFamilyNamesFromNests:
+                processedFamilyNames = (
+                    processedFamilyNames + processedFamilyNamesFromNests
+                )
 
         LOGGER.debug("{}Loading family back in: {}".format(prefix, familyDoc.Title))
         familyDoc.LoadFamily(doc, iFamilyLoadOptions())
@@ -1436,4 +1441,47 @@ def OperateOnNestedFamilies(
                 LOGGER.warn("{}Unable to close family: {}".format(prefix, e))
     for error in swallowedErrors:
         print(error)
-    return processedFamilyIds
+    return processedFamilyNames
+
+
+class CopyUseDestination(DB.IDuplicateTypeNamesHandler):
+    """Handle copy and paste errors."""
+
+    def OnDuplicateTypeNamesFound(self, args):
+        """Use destination model types if duplicate."""
+        return DB.DuplicateTypeAction.UseDestinationTypes
+
+
+def CopyElementsFromOtherDocument(sourceDoc, targetDoc, elementIds, closeSourceDoc=False):
+    if type(sourceDoc) == str:
+        from flamingo.ensure import EnsureLibraryDoc
+        sourceDoc = EnsureLibraryDoc(sourceDoc)
+
+    copyPasteOptions = DB.CopyPasteOptions()
+    copyPasteOptions.SetDuplicateTypeNamesHandler(CopyUseDestination())
+    LOGGER.debug("elementIds = {}".format(elementIds))
+    copiedElementIds = DB.ElementTransformUtils.CopyElements(
+        sourceDoc,
+        List[DB.ElementId](elementIds),
+        targetDoc,
+        None,
+        copyPasteOptions,
+    )
+    if closeSourceDoc:
+        sourceDoc.Close(False)
+    return copiedElementIds
+
+
+def GetElementSymbolId(element):
+    LOGGER.debug("GetElementSymbol")
+    if hasattr(element, "WallType"):
+        return element.WallType.Id
+    if hasattr(element, "CurtainSystemType"):
+        return element.CurtainSystemType.Id
+    elif hasattr(element, "Symbol"):
+        return element.Symbol.Id
+    elif hasattr(element, "TypeId"):
+        return element.TypeId
+    LOGGER.warn("{} Unable to get symbol".format(OUTPUT.linkify(element.Id)))
+    return
+
