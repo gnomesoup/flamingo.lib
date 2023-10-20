@@ -32,4 +32,6 @@ def SetSchemaData(schema, fieldName, element, data):
     retrievedEntity = element.GetEntity(schema)
     data = retrievedEntity.Get[str](field)
     return data
-    
+
+def GetSchemaData():
+    return

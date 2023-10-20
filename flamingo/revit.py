@@ -414,7 +414,8 @@ def OpenDetached(filePath, audit=False, preserveWorksets=True, visible=False):
     return doc
 
 
-def OpenLocal(filePath, localDir, extension=""):
+def OpenLocal(filePath, localDir, extension="", hostApp=None):
+    hostApp = hostApp or HOST_APP
     LOGGER.debug('Flamingo "OpenLocal" called')
     localDir = path.expandvars(localDir)
     centralFileName = path.basename(filePath)
@@ -424,7 +425,7 @@ def OpenLocal(filePath, localDir, extension=""):
     LOGGER.info("filePath={}".format(filePath))
     LOGGER.info("localPath={}".format(localPath))
     shutil.copyfile(filePath, localPath)
-    return HOST_APP.uiapp.OpenAndActivateDocument(localPath)
+    return hostApp.uiapp.OpenAndActivateDocument(localPath)
 
 
 def GetDefaultPathForUserFiles(app=None):

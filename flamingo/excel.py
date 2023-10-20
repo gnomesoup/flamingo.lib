@@ -9,7 +9,7 @@ from os import path
 
 LOGGER = get_logger(__name__)
 
-def OpenWorkbook(excelPath, createNew = True):
+def OpenWorkbook(excelPath=None, createNew=True):
     """
     Check to see if excel is already running. Open if not.
     Get a list of currently open workbooks. Connect to
@@ -17,8 +17,8 @@ def OpenWorkbook(excelPath, createNew = True):
     specified in `excelPath`.
 
     args:
-        excelPath (str): location of excel file to load
-        createNew (boolean): if true, a new workbook will be opened
+        excelPath (optional, str): location of excel file to load
+        createNew (optional, boolean): if true, a new workbook will be opened
     
     returns:
         Microsoft.Office.Interop.Excel.Workbook
@@ -38,7 +38,7 @@ def OpenWorkbook(excelPath, createNew = True):
             LOGGER.debug("Found opened workbook")
             break
     if workbook is None:
-        if path.exists(excelPath):
+        if excelPath and path.exists(excelPath):
             workbook = excel.Workbooks.Open(excelPath)
             LOGGER.debug("Opened workbook at {}".format(excelPath))
         elif createNew:
@@ -104,3 +104,6 @@ def GetWorksheetData(worksheet, group=False, skip=0):
             "data": rowValues,
         }
     return sheetValues
+
+def SetWorksheetData(workseheet, data):
+    pass
