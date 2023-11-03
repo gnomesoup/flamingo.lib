@@ -184,11 +184,17 @@ def GetWallLocationCurve(wall, locationLine):
 
 
 def GetSolids(element):
+    geometries = (
+        element.ClosedShell
+        if hasattr(element, "ClosedShell")
+        else element.get_Geometry(DB.Options())
+    )
     return [
         geometry
-        for geometry in element.get_Geometry(DB.Options())
+        for geometry in geometries
         if type(geometry) == DB.Solid
     ]
+
 
 def GetSolidsIntersection(solid1, solid2):
     intersectionSolid = DB.BooleanOperationsUtils.ExecuteBooleanOperation(
@@ -198,6 +204,7 @@ def GetSolidsIntersection(solid1, solid2):
         return intersectionSolid
     else:
         return None
+
 
 def SolidsAreIntersecting(solid1, solid2):
     intersectionSolid = SolidsIntersection(solid1, solid2)
