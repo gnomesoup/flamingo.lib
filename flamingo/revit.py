@@ -770,6 +770,85 @@ def _TestRoomIntersect(room, solid):
     return
 
 
+def _ProjectToLevel(elementOutline, element):
+    LOGGER.debug("Projecting to level")
+    doc = element.Document
+    location = element.Location
+    if type(location) == DB.LocationCurve:
+        curve = location.Curve
+        elementPoint = curve.GetEndPoint(-1)
+    elif hasattr(location, "Point"):
+        elementPoint = location.Point
+    else:
+        elementPoint = None
+    LOGGER.debug("elementPoint = {}".format(elementPoint))
+    if elementPoint:
+        if hasattr(element, "LevelId"):
+            elementLevel = doc.GetElement(element.LevelId)
+            if elementLevel:
+                z = elementLevel.Elevation
+        else:
+            z = elementPoint.Z
+            elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, z))
+    return elementOutline
+
+
+def GetElementRoomsFromLink(
+    element,
+    linkDoc,
+    transform,
+    roomsFromLink=None,
+    offset=1.0,
+    projectToLevel=True,
+):
+    LOGGER.info(
+        "GetElementRoomsFromLink: element={}".format(OUTPUT.linkify(element.Id))
+    )
+    elementBoundingBox = element.get_BoundingBox(None)
+    if not elementBoundingBox.Enabled:
+        LOGGER.debug("Bounding Box Not Enabled")
+        return
+
+    elementOutline = DB.Outline(
+        elementBoundingBox.Min.Add(DB.XYZ(-1.0 * offset, -1.0 * offset, -1.0 * offset)),
+        elementBoundingBox.Max.Add(DB.XYZ(offset, offset, offset)),
+    )
+
+    if projectToLevel and element.Location is not None:
+        elementOutline = _ProjectToLevel(elementOutline, element)
+
+    # Transform the outline to the link
+    inverseTransform = transform.Inverse
+    transformedMinPoint = inverseTransform.OfPoint(elementOutline.MinimumPoint)
+    transformedMaxPoint = inverseTransform.OfPoint(elementOutline.MaximumPoint)
+
+    transformedOutline = DB.Outline(transformedMinPoint, transformedMaxPoint)
+    boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(transformedOutline)
+
+    if roomsFromLink:
+        rooms = (
+            DB.FilteredElementCollector(linkDoc)
+            .WherePasses(
+                DB.ElementIdSetFilter(
+                    List[DB.ElementId](room.Id for room in roomsFromLink)
+                )
+            )
+            .WherePasses(boundingBoxIntersectsFilter)
+            .ToElements()
+        )
+    else:
+        rooms = (
+            DB.FilteredElementCollector(linkDoc)
+            .OfCategory(DB.BuiltInCategory.OST_Rooms)
+            .WherePasses(boundingBoxIntersectsFilter)
+            .ToElements()
+        )
+    LOGGER.debug("Number of intersecting rooms: {}".format(len(rooms)))
+    elementSolids = GetSolids(element)
+    matchedRooms = _GetMatchingRooms(element, elementSolids, elementOutline, rooms)
+    return matchedRooms
+
+
 def GetElementRooms(
     element, phase, rooms=None, offset=1.0, projectToLevel=True, doc=None
 ):
@@ -798,25 +877,30 @@ def GetElementRooms(
     from Autodesk.Revit.Exceptions import InvalidOperationException
 
     LOGGER.debug(
-        "GetElementRoom: element={}, phase={}, offset={}".format(
-            OUTPUT.linkify(element.Id), phase.Id, offset
+        "GetElementRoom: element={}, phase={}, len(rooms)={}, offset={}, "
+        "projectToLevel={}".format(
+            OUTPUT.linkify(element.Id), phase.Id, len(rooms), offset, projectToLevel
         )
     )
     if doc is None:
-        doc = HOST_APP.doc
+        doc = element.Document
 
     # Check if element self reports room
     if hasattr(element, "ToRoom"):
-        rooms = [(element.ToRoom)[phase]]
+        toRoom = [(element.ToRoom)[phase]]
         fromRoom = (element.FromRoom)[phase]
         if fromRoom:
-            rooms.append(fromRoom)
-        if rooms:
-            return rooms
+            toRoom.append(fromRoom)
+        if all(toRoom):
+            LOGGER.debug("Element self reports room with ToRoom property")
+            return toRoom
     if hasattr(element, "Room"):
-        room = (element.Room)[phase]
-        if room is not None:
-            return [room]
+        elementRoom = (element.Room)[phase]
+        if elementRoom is not None:
+            LOGGER.debug("Element self reports room with room property")
+            return [elementRoom]
+
+    LOGGER.debug("Element does not self report room, searching for intersecting rooms")
 
     # Get the elements bounding box
     elementBoundingBox = element.get_BoundingBox(None)
@@ -830,31 +914,22 @@ def GetElementRooms(
     )
 
     if projectToLevel and element.Location is not None:
-        location = element.Location
-        if type(location) == DB.LocationCurve:
-            curve = location.Curve
-            elementPoint = curve.GetEndPoint(0)
-        elif hasattr(location, "Point"):
-            elementPoint = location.Point
-        else:
-            elementPoint = None
-        LOGGER.debug("elementPoint = {}".format(elementPoint))
-        if elementPoint:
-            if hasattr(element, "LevelId"):
-                elementLevel = doc.GetElement(element.LevelId)
-                if elementLevel:
-                    z = elementLevel.Elevation
-            else:
-                z = elementPoint.Z
-                elementOutline.AddPoint(DB.XYZ(elementPoint.X, elementPoint.Y, z))
+        LOGGER.debug("Projecting to level")
+        elementOutline = _ProjectToLevel(elementOutline, element)
 
     boundingBoxIntersectsFilter = DB.BoundingBoxIntersectsFilter(elementOutline)
 
+    LOGGER.debug("Searching for intersecting rooms")
     if rooms:
+        # msg = ["roomId={}/n".format(room.Id) for room in rooms]
+        msg = ["room type={}/n".format(type( room )) for room in rooms]
+        print(msg)
         rooms = (
             DB.FilteredElementCollector(doc)
             .WherePasses(
-                DB.ElementIdSetFilter(List[DB.ElementId](room.Id for room in rooms))
+                DB.ElementIdSetFilter(
+                    List[DB.ElementId](room.Id for room in rooms if hasattr(room, "Id"))
+                )
             )
             .WherePasses(boundingBoxIntersectsFilter)
             .ToElements()
@@ -868,8 +943,16 @@ def GetElementRooms(
         )
     LOGGER.debug("Number of intersecting rooms: {}".format(len(rooms)))
     elementSolids = GetSolids(element)
-    matchedRooms = []
+    matchedRooms = _GetMatchingRooms(element, elementSolids, elementOutline, rooms)
+    return matchedRooms
+
+
+def _GetMatchingRooms(element, elementSolids, elementOutline, rooms):
+    LOGGER.debug(
+        "_GetMatchingRooms(element={}, elementSolids={}, elementOutline, rooms)"
+    )
     LOGGER.info("Matching room with element solid method")
+    matchedRooms = []
     for room in rooms:
         roomSolid = GetSolids(room)[0]
         for elementSolid in elementSolids:
@@ -997,20 +1080,14 @@ def GetAllElementIdsInModelGroups(doc=None):
 
 
 def SetParameter(element, parameterName, value):
-    try:
-        if type(parameterName) == Guid:
-            parameter = element.get_Parameter(parameterName)
-        elif type(parameterName) == DB.BuiltInParameter:
-            parameter = element.get_Parameter(parameterName)
-        else:
-            parameter = element.LookupParameter(parameterName)
-        if parameter:
-            parameter.Set(value)
-        else:
-            LOGGER.info("Parameter {} missing project.".format(parameterName))
-            parameter.Set(value)
-    except AttributeError as e:
-        LOGGER.debug("SetParameter Error: {}".format(e))
+    if type(parameterName) == Guid:
+        parameter = element.get_Parameter(parameterName)
+    elif type(parameterName) == DB.BuiltInParameter:
+        parameter = element.get_Parameter(parameterName)
+    else:
+        parameter = element.LookupParameter(parameterName)
+    assert parameter
+    parameter.Set(value)
     return parameter
 
 
@@ -1453,9 +1530,12 @@ class CopyUseDestination(DB.IDuplicateTypeNamesHandler):
         return DB.DuplicateTypeAction.UseDestinationTypes
 
 
-def CopyElementsFromOtherDocument(sourceDoc, targetDoc, elementIds, closeSourceDoc=False):
+def CopyElementsFromOtherDocument(
+    sourceDoc, targetDoc, elementIds, closeSourceDoc=False
+):
     if type(sourceDoc) == str:
         from flamingo.ensure import EnsureLibraryDoc
+
         sourceDoc = EnsureLibraryDoc(sourceDoc)
 
     copyPasteOptions = DB.CopyPasteOptions()
@@ -1486,3 +1566,12 @@ def GetElementSymbolId(element):
     LOGGER.warn("{} Unable to get symbol".format(OUTPUT.linkify(element.Id)))
     return
 
+def GetSolidFillId(doc):
+    LOGGER.debug("GetSolidFillId({})".format(doc))
+    fillPatternElements = (
+        DB.FilteredElementCollector(doc).OfClass(DB.FillPatternElement).ToElements()
+    )
+    for fillPatternElement in fillPatternElements:
+        if fillPatternElement.GetFillPattern().IsSolidFill:
+            return fillPatternElement.Id
+    return
