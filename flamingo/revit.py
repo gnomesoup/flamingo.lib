@@ -764,10 +764,10 @@ def _TestRoomIntersect(room, solid):
         )
         LOGGER.debug("interSolid.Volume = {}".format(interSolid.Volume))
         if hasattr(interSolid, "Volume") and abs(interSolid.Volume > 0.000001):
-            return room
+            return room, interSolid.Volume
     except InvalidOperationException as e:
         LOGGER.debug("Error: {}".format(str(e)))
-    return
+    return None, None
 
 
 def _ProjectToLevel(elementOutline, element):
@@ -949,14 +949,17 @@ def GetElementRooms(
 
 def _GetMatchingRooms(element, elementSolids, elementOutline, rooms):
     LOGGER.debug(
-        "_GetMatchingRooms(element={}, elementSolids={}, elementOutline, rooms)"
+        "_GetMatchingRooms(element={}, elementSolids={}, elementOutline={}, "
+        "len(rooms)={})".format(
+            element.Id, elementSolids, elementOutline, len(rooms)
+        )
     )
     LOGGER.info("Matching room with element solid method")
     matchedRooms = []
     for room in rooms:
         roomSolid = GetSolids(room)[0]
         for elementSolid in elementSolids:
-            matchedRoom = _TestRoomIntersect(room, elementSolid)
+            matchedRoom, volume = _TestRoomIntersect(room, elementSolid)
             if matchedRoom:
                 matchedRooms.append(matchedRoom)
 
@@ -976,10 +979,15 @@ def _GetMatchingRooms(element, elementSolids, elementOutline, rooms):
         elementSolid = MakeSolid(
             elementOutline.MinimumPoint, elementOutline.MaximumPoint
         )
+        roomMatchVolumes = {}
         for room in rooms:
-            matchedRoom = _TestRoomIntersect(room, elementSolid)
+            matchedRoom, volume = _TestRoomIntersect(room, elementSolid)
             if matchedRoom:
-                matchedRooms.append(matchedRoom)
+                roomMatchVolumes[volume] = room
+        # get the room with the largest volume
+        if roomMatchVolumes:
+            matchedRooms = [roomMatchVolumes[max(roomMatchVolumes.keys())]]
+
     return matchedRooms
 
 
