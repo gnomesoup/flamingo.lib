@@ -1,5 +1,6 @@
 from pyrevit import clr
 from pyrevit.coreutils.logger import get_logger
+
 clr.AddReferenceByName(
     "Microsoft.Office.Interop.Excel, Version=11.0.0.0, Culture=neutral, PublicKeyToken=71e9bce111e9429c"
 )
@@ -8,6 +9,7 @@ from System.Runtime.InteropServices import Marshal
 from os import path
 
 LOGGER = get_logger(__name__)
+
 
 def OpenWorkbook(excelPath=None, createNew=True):
     """
@@ -19,10 +21,11 @@ def OpenWorkbook(excelPath=None, createNew=True):
     args:
         excelPath (optional, str): location of excel file to load
         createNew (optional, boolean): if true, a new workbook will be opened
-    
+
     returns:
         Microsoft.Office.Interop.Excel.Workbook
     """
+    LOGGER.debug("OpenWorkbook({},{})".format(excelPath, createNew))
     try:
         excel = Marshal.GetActiveObject("Excel.Application")
     except:
@@ -32,8 +35,10 @@ def OpenWorkbook(excelPath=None, createNew=True):
     excel.DisplayAlerts = False
 
     workbook = None
+    excelPath = excelPath or ""
     for wb in excel.Workbooks:
-        if (wb.Fullname).lower() == excelPath.lower():
+        fullName = wb.Fullname or ""
+        if fullName.lower() == excelPath.lower():
             workbook = wb
             LOGGER.debug("Found opened workbook")
             break
@@ -48,6 +53,7 @@ def OpenWorkbook(excelPath=None, createNew=True):
             workbook = False
             LOGGER.debug("No workbook found")
     return workbook
+
 
 def GetWorksheetData(worksheet, group=False, skip=0):
     """
@@ -66,19 +72,27 @@ def GetWorksheetData(worksheet, group=False, skip=0):
         dict
     """
 
-    rowIndexes = [row.Row for row in worksheet.UsedRange.Rows]
+    LOGGER.debug(
+        "GetWorksheetData({}, group={}, skip={})".format(worksheet.Name, group, skip)
+    )
+    if hasattr(worksheet, "UsedRange"):
+        rowIndexes = [row.Row for row in worksheet.UsedRange.Rows]
+    else:
+        rowIndexes = [row.Row for row in worksheet.Rows]
     lastRow = rowIndexes[-1]
     groupSort = 0
     groupName = None
     sheetValues = {
         "rowCount": worksheet.UsedRange.Rows.Count,
-        "columnCount": worksheet.UsedRange.Columns.Count
+        "columnCount": worksheet.UsedRange.Columns.Count,
     }
-    columnIndexes = [column.Column for column in worksheet.UsedRange.Columns]
-    # for column in worksheet.UsedRange.Columns:
-    #     print(column.Column)
-    #     print(column.ColumnWidth)
+    if hasattr(worksheet, "UsedRange"):
+        columnIndexes = [column.Column for column in worksheet.UsedRange.Columns]
+    else:
+        columnIndexes = [column.Column for column in worksheet.Columns]
     for i in range(skip + 1, lastRow + 1):
+        if i % 100 == 0:
+            LOGGER.debug("Processing row {}".format(i))
         metaValues = {
             "Sort Name": groupName,
             "Sort Number": groupSort,
@@ -88,7 +102,7 @@ def GetWorksheetData(worksheet, group=False, skip=0):
         sortRow = False
         cellValue = None
         for j in columnIndexes:
-            cellValue = worksheet.Cells[i,j].Text
+            cellValue = worksheet.Cells[i, j].Text
             if cellValue not in [None, ""]:
                 if j == 1 and group:
                     sortRow = True
@@ -104,6 +118,7 @@ def GetWorksheetData(worksheet, group=False, skip=0):
             "data": rowValues,
         }
     return sheetValues
+
 
 def SetWorksheetData(workseheet, data):
     pass
