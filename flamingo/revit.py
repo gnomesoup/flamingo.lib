@@ -74,7 +74,7 @@ def CreateProjectParameter(
     # Find the parameter in the parameters file
     definitionsFile = app.OpenSharedParameterFile()
     if not definitionsFile:
-        PyRevitException("Could not read from the shared parameters file")
+        raise PyRevitException("Could not read from the shared parameters file")
     definitionGroup = definitionsFile.Groups.get_Item(sharedParameterGroupName)
     if type(parameterName) == Guid:
         externalDefinition = None
@@ -85,7 +85,8 @@ def CreateProjectParameter(
     else:
         externalDefinition = definitionGroup.Definitions.get_Item(parameterName)
     if not externalDefinition:
-        PyRevitException(
+        LOGGER.debug("No externalDefinition found")
+        raise PyRevitException(
             "Could not locate parameter in shared parameter file: {}".format(
                 str(parameterName)
             )
@@ -109,6 +110,9 @@ def CreateProjectParameter(
         newBinding = app.Create.NewTypeBinding(categorySet)
     else:
         newBinding = app.Create.NewInstanceBinding(categorySet)
+    LOGGER.debug("externalDefinition = {}".format(externalDefinition))
+    LOGGER.debug("newBinding = {}".format(newBinding))
+    LOGGER.debug("parameterGroup = {}".format(parameterGroup))
     return doc.ParameterBindings.Insert(externalDefinition, newBinding, parameterGroup)
 
 
@@ -922,7 +926,7 @@ def GetElementRooms(
     LOGGER.debug("Searching for intersecting rooms")
     if rooms:
         # msg = ["roomId={}/n".format(room.Id) for room in rooms]
-        msg = ["room type={}/n".format(type( room )) for room in rooms]
+        msg = ["room type={}/n".format(type(room)) for room in rooms]
         print(msg)
         rooms = (
             DB.FilteredElementCollector(doc)
@@ -950,9 +954,7 @@ def GetElementRooms(
 def _GetMatchingRooms(element, elementSolids, elementOutline, rooms):
     LOGGER.debug(
         "_GetMatchingRooms(element={}, elementSolids={}, elementOutline={}, "
-        "len(rooms)={})".format(
-            element.Id, elementSolids, elementOutline, len(rooms)
-        )
+        "len(rooms)={})".format(element.Id, elementSolids, elementOutline, len(rooms))
     )
     LOGGER.info("Matching room with element solid method")
     matchedRooms = []
@@ -1088,9 +1090,12 @@ def GetAllElementIdsInModelGroups(doc=None):
 
 
 def SetParameter(element, parameterName, value):
+    LOGGER.debug("SetParameter(element={},{},{})".format(element, parameterName, value))
     if type(parameterName) == Guid:
+        LOGGER.debug("ParameterName is a Guid")
         parameter = element.get_Parameter(parameterName)
     elif type(parameterName) == DB.BuiltInParameter:
+        LOGGER.debug("ParameterName is a BuiltInParameter")
         parameter = element.get_Parameter(parameterName)
     else:
         parameter = element.LookupParameter(parameterName)
@@ -1573,6 +1578,7 @@ def GetElementSymbolId(element):
         return element.TypeId
     LOGGER.warn("{} Unable to get symbol".format(OUTPUT.linkify(element.Id)))
     return
+
 
 def GetSolidFillId(doc):
     LOGGER.debug("GetSolidFillId({})".format(doc))
