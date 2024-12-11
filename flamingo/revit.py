@@ -281,6 +281,7 @@ def PurgeUnused(doc=None):
 
 
 def GetElementMaterialIds(element):
+    LOGGER.debug("GetElementMaterialIds: element={}".format(OUTPUT.linkify(element.Id)))
     try:
         elementMaterials = element.GetMaterialIds(False)
         paintMaterials = element.GetMaterialIds(True)
@@ -288,7 +289,7 @@ def GetElementMaterialIds(element):
             elementMaterials.append(materialId)
         return elementMaterials
     except Exception as e:
-        print(e)
+        LOGGER.debug(e)
         return []
 
 
@@ -1040,7 +1041,7 @@ def GetScheduledParameterByName(scheduleView, parameterName, doc=None):
         return None
 
 
-def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None):
+def GetAllGroups(includeModelGroups=True, includeDetailGroups=True, doc=None):
     doc = doc or HOST_APP.doc
     builtInCategories = List[DB.BuiltInCategory]()
     if includeModelGroups:
@@ -1055,6 +1056,16 @@ def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None
         .WherePasses(multiCategoryFilter)
         .WhereElementIsNotElementType()
         .ToElements()
+    )
+    return groups
+
+
+def UngroupAllGroups(includeDetailGroups=True, includeModelGroups=True, doc=None):
+    doc = doc or HOST_APP.doc
+    groups = GetAllGroups(
+        includeDetailGroups=includeDetailGroups,
+        includeModelGroups=includeModelGroups,
+        doc=doc,
     )
     groupTypes = set(group.GroupType for group in groups)
     [group.UngroupMembers() for group in groups]
