@@ -116,6 +116,49 @@ def CreateProjectParameter(
     return doc.ParameterBindings.Insert(externalDefinition, newBinding, parameterGroup)
 
 
+def CreateGlobalParameter(doc, name, param_type, value=None):
+    """
+    Create a new Global Parameter in the Revit document
+
+    Args:
+        doc: The Revit document
+        name: Name of the global parameter
+        param_type: Parameter type (e.g., DB.ParameterType.Length)
+        value: Value to assign to the parameter (optional)
+
+    Returns:
+        The newly created GlobalParameter
+    """
+    # Check if parameter already exists
+    existing_param_ids = DB.GlobalParametersManager.GetAllGlobalParameters(doc)
+    for param_id in existing_param_ids:
+        param = doc.GetElement(param_id)
+        if param.Name == name:
+            LOGGER.debug("Global parameter '{}' already exists".format(name))
+            return param
+
+    # Create a new global parameter
+    param_id = DB.GlobalParametersManager.CreateGlobalParameter(doc, name, param_type)
+    param = doc.GetElement(param_id)
+
+    # Set the parameter value if provided
+    if value is not None:
+        if param_type == DB.ParameterType.Length:
+            value_wrapper = DB.DoubleParameterValue(value)
+        elif param_type == DB.ParameterType.Number:
+            value_wrapper = DB.DoubleParameterValue(value)
+        elif param_type == DB.ParameterType.Integer:
+            value_wrapper = DB.IntegerParameterValue(value)
+        elif param_type == DB.ParameterType.Text:
+            value_wrapper = DB.StringParameterValue(value)
+        elif param_type == DB.ParameterType.YesNo:
+            value_wrapper = DB.IntegerParameterValue(1 if value else 0)
+        else:
+            LOGGER.debug("Unsupported parameter type: {}".format(param_type))
+
+        param.SetValue(value_wrapper)
+
+
 def GetParameterFromProjectInfo(doc, parameterName):
     """
     Returns a parameter value from the Project Information category by name.
@@ -1526,7 +1569,7 @@ def OperateOnNestedFamilies(
                 includeShared=False,
                 nestLevel=nestLevel + 1,
                 closeDocs=True,
-                **kwargs
+                **kwargs,
             )
             if processedFamilyNamesFromNests:
                 processedFamilyNames = (
