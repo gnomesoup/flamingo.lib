@@ -159,37 +159,33 @@ def CreateGlobalParameter(doc, name, param_type, value=None):
         param.SetValue(value_wrapper)
 
 
-def GetParameterFromProjectInfo(doc, parameterName):
+def GetParameterFromProjectInfo(doc, parameterName, defaultValue=None):
     """
     Returns a parameter value from the Project Information category by name.
     """
+    LOGGER.debug("GetParameterFromProjectInfo: {}".format(parameterName))
+    parameterValue = None
     try:
-        projectInformation = (
-            DB.FilteredElementCollector(doc)
-            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
-            .ToElements()
-        )
-        parameterValue = projectInformation[0].LookupParameter(parameterName).AsString()
-    except:
-        return None
-    return parameterValue
+        parameterValue = GetParameterValueByName(doc.ProjectInformation, parameterName)
+    except Exception as e:
+        LOGGER.debug(e)
+        return defaultValue
+    LOGGER.debug("parameterValue: {}".format(parameterValue))
+    return parameterValue or defaultValue
 
 
 def SetParameterFromProjectInfo(doc, parameterName, parameterValue):
     """
     Set a parameter value from the Project Information category by name.
     """
-    if True:
-        # try:
-        projectInformation = (
-            DB.FilteredElementCollector(doc)
-            .OfCategory(DB.BuiltInCategory.OST_ProjectInformation)
-            .ToElements()
+    try:
+        SetParameter(
+            doc.ProjectInformation, parameterName, parameterValue
         )
-        parameter = projectInformation[0].LookupParameter(parameterName)
+        parameter = doc.ProjectInformation.LookupParameter(parameterName)
         parameter.Set(parameterValue)
-    # except:
-    #     return None
+    except:
+        return None
     return parameter
 
 
