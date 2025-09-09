@@ -28,6 +28,11 @@ class iFamilyLoadOptions(DB.IFamilyLoadOptions):
         source = DB.FamilySource.Family
         return True
 
+class FailuresPreprocessor(DB.IFailuresPreprocessor):
+    def PreprocessFailures(self, failuresAccessor):
+        for msg in failuresAccessor.GetFailureMessages():
+            LOGGER.error("Failure: {}".format(msg))
+        return DB.FailureProcessingResult.Continue
 
 def CreateProjectParameter(
     parameterName,
@@ -442,7 +447,9 @@ def GetPhase(phaseName, doc=None):
     return None
 
 
-def OpenDetached(filePath, audit=False, preserveWorksets=True, visible=False):
+def OpenDetached(filePath, audit=False, preserveWorksets=True, visible=False, hostApp=None, uiApp=None):
+    LOGGER.debug("Opening detached model: {}".format(filePath))
+    hostApp = hostApp or HOST_APP
     modelPath = DB.ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath)
     openOptions = DB.OpenOptions()
     if preserveWorksets:
@@ -452,9 +459,10 @@ def OpenDetached(filePath, audit=False, preserveWorksets=True, visible=False):
     openOptions.DetachFromCentralOption = detachOption
     openOptions.Audit = audit
     if visible:
-        doc = HOST_APP.uiapp.OpenAndActivateDocument(modelPath, openOptions, True)
+        uiApp = uiApp or hostApp.uiapp
+        doc = uiApp.OpenAndActivateDocument(modelPath, openOptions, True)
     else:
-        doc = HOST_APP.app.OpenDocumentFile(modelPath, openOptions)
+        doc = hostApp.app.OpenDocumentFile(modelPath, openOptions)
     return doc
 
 
