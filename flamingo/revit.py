@@ -398,6 +398,44 @@ def GetUnusedAssets(doc=None):
     ]
 
 
+def PurgeUnusedMaterialsAssets(doc):
+    unusedMaterials = GetUnusedMaterials(doc)
+    revit.delete.delete_elements(element_list=unusedMaterials, doc=doc)
+    unusedAssets = GetUnusedAssets(doc)
+    revit.delete.delete_elements(element_list=unusedAssets, doc=doc)
+    return
+
+
+def GetUnusedLineSubcategoryIds(doc):
+    curveElements = (
+        DB.FilteredElementCollector(doc).OfClass(DB.CurveElement).ToElements()
+    )
+    lineStyleIdsInUse = set(curveElement.LineStyle.Id for curveElement in curveElements)
+    subCategories = doc.Settings.Categories.get_Item(
+        DB.BuiltInCategory.OST_Lines
+    ).SubCategories
+    unusedSubcategoryIds = set()
+    for category in subCategories:
+        if category.Id.IntegerValue < 0:
+            continue
+        style = category.GetGraphicsStyle(DB.GraphicsStyleType.Projection)
+        if style and style.Id not in lineStyleIdsInUse:
+            unusedSubcategoryIds.add(category.Id)
+            continue
+        style = category.GetGraphicsStyle(DB.GraphicsStyleType.Cut)
+        if style and style.Id not in lineStyleIdsInUse:
+            unusedSubcategoryIds.add(category.Id)
+            continue
+    return unusedSubcategoryIds
+
+
+def PurgeUnusedLineSubcategories(doc):
+    lineSubcategoryIds = GetUnusedLineSubcategoryIds(doc)
+    # LOGGER.debug("Purging {} unused line styles".format(len(lineSubcategoryIds)))
+    doc.Delete(List[DB.ElementId](lineSubcategoryIds))
+    return
+
+
 def MarkModelTransmitted(filepath, isTransmitted=True):
     """
     Marks a workshared project as transmitted. The model will be forced to
@@ -1253,6 +1291,26 @@ def CopyParameterValue(element, source, destination):
     except (AttributeError, TypeError) as e:
         LOGGER.warn("\tError:{}".format(e))
     return destinationParameter
+
+
+def GetAllElementIdsWithParameter(doc, parameterGuid):
+    parameters = (
+        DB.FilteredElementCollector(doc).OfClass(DB.SharedParameterElement).ToElements()
+    )
+    parameterId = None
+    for parameter in parameters:
+        if parameter.GuidValue == parameterGuid:
+            parameterId = parameter.Id
+            break
+    if not parameterId:
+        AssertionError(
+            "Could not find shared parameter with GUID: {}".format(parameterGuid)
+        )
+    return (
+        DB.FilteredElementCollector(doc)
+        .WherePasses(DB.ElementParameterFilter(DB.HasValueFilterRule(parameterId)))
+        .ToElementIds()
+    )
 
 
 def GetElementsVisibleInView(
