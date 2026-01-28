@@ -48,6 +48,9 @@ def SetSchemaData(schema, fieldName, element, data):
 
 def SetSchemaMapData(schema, fieldName, element, dictionary):
     entity = DB.ExtensibleStorage.Entity(schema)
+    if not entity.RecognizedField(schema.GetField(fieldName)):
+        entity = DB.ExtensibleStorage.Entity(schema)
+        element.SetEntity(entity)
     field = schema.GetField(fieldName)
     entity.Set[IDictionary[String, String]](field, dictionary)
     element.SetEntity(entity)
@@ -66,20 +69,23 @@ def GetFlamingoSchema(doc=None):
     flamingoSchema = DB.ExtensibleStorage.Schema.Lookup(
         System.Guid(FLAMINGO_SCHEMA_GUID)
     )
-    if flamingoSchema:
-        LOGGER.debug("Returning existing Flamingo schema.")
-        return flamingoSchema
-    LOGGER.debug("Creating new Flamingo schema.")
-    schemaBuilder = CreateSchemaBuilder(
-        FLAMINGO_SCHEMA_GUID, "Flamingo", "Flamingo", doc
-    )
-    fieldBuilder = schemaBuilder.AddMapField("Settings", System.String, System.String)
-    fieldBuilder.SetDocumentation("JSon string that includes a dictionary settings.")
-    fieldBuilder = schemaBuilder.AddSimpleField("Version", System.String)
-    fieldBuilder.SetDocumentation("Flamingo version information")
-    flamingoSchema = schemaBuilder.Finish()
-    entity = DB.ExtensibleStorage.Entity(flamingoSchema)
-    entity.Set(flamingoSchema.GetField("Version"), FLAMINGO_VERSION)
+    if not flamingoSchema:
+        LOGGER.debug("Creating new Flamingo schema.")
+        schemaBuilder = CreateSchemaBuilder(
+            FLAMINGO_SCHEMA_GUID, "Flamingo", "Flamingo", doc
+        )
+        fieldBuilder = schemaBuilder.AddMapField("Settings", System.String, System.String)
+        fieldBuilder.SetDocumentation("JSon string that includes a dictionary settings.")
+        fieldBuilder = schemaBuilder.AddSimpleField("Version", System.String)
+        fieldBuilder.SetDocumentation("Flamingo version information")
+        flamingoSchema = schemaBuilder.Finish()
+    entity = doc.ProjectInformation.GetEntity(flamingoSchema)
+    if not entity.RecognizedField(flamingoSchema.GetField("Version")):
+        LOGGER.debug("Setting Flamingo schema version.")
+        entity = DB.ExtensibleStorage.Entity(flamingoSchema)
+    version = entity.Get[str](flamingoSchema.GetField("Version"))
+    if not version:
+        entity.Set(flamingoSchema.GetField("Version"), FLAMINGO_VERSION)
     doc.ProjectInformation.SetEntity(entity)
     return flamingoSchema
 
