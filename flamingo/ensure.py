@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from Autodesk.Revit import DB
 import clr
-from flamingo.revit import OpenDetached, CreateProjectParameter
+from flamingo.revit import OpenDetached, CreateProjectParameter, GetElementIdValue
 from os import path
 from pyrevit import HOST_APP, revit, forms, PyRevitException
 from pyrevit.coreutils.logger import get_logger
@@ -95,9 +95,12 @@ def set_element_workset(
         doc = HOST_APP.doc
     try:
         elementWorkset = element.get_Parameter(DB.BuiltInParameter.ELEM_PARTITION_PARAM)
-        elementWorksetId = element.WorksetId.IntegerValue
-        if elementWorksetId != worksetId.IntegerValue and not elementWorkset.IsReadOnly:
-            elementWorkset.Set(worksetId.IntegerValue)
+        elementWorksetId = GetElementIdValue(element.WorksetId)
+        if (
+            elementWorksetId != GetElementIdValue(worksetId)
+            and not elementWorkset.IsReadOnly
+        ):
+            elementWorkset.Set(GetElementIdValue(worksetId))
             return element
     except Exception as e:
         print("Set workset error: " + str(e))

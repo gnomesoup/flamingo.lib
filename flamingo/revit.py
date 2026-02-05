@@ -416,7 +416,7 @@ def GetUnusedLineSubcategoryIds(doc):
     ).SubCategories
     unusedSubcategoryIds = set()
     for category in subCategories:
-        if category.Id.IntegerValue < 0:
+        if GetElementIdValue(category.Id) < 0:
             continue
         style = category.GetGraphicsStyle(DB.GraphicsStyleType.Projection)
         if style and style.Id not in lineStyleIdsInUse:
@@ -728,7 +728,7 @@ def FilterByCategory(elements, builtInCategory):
     return [
         element
         for element in elements
-        if element.Category.Id.IntegerValue == int(builtInCategory)
+        if GetElementIdValue(element.Category.Id) == int(builtInCategory)
     ]
 
 
@@ -759,7 +759,7 @@ def HideUnplacedViewTags(view=None, doc=None):
         .WhereElementIsNotElementType()
         .ToElements()
     )
-    viewerIds = [viewer.Id.IntegerValue for viewer in viewers]
+    viewerIds = [GetElementIdValue(viewer.Id) for viewer in viewers]
     elevs = (
         DB.FilteredElementCollector(doc, view.Id)
         .OfCategory(DB.BuiltInCategory.OST_Elev)
@@ -792,7 +792,7 @@ def HideUnplacedViewTags(view=None, doc=None):
         dependentElementIds = element.GetDependentElements(elementFilter)
         shownViews = len(dependentElementIds)
         for dependentElementId in dependentElementIds:
-            if dependentElementId.IntegerValue not in viewerIds:
+            if GetElementIdValue(dependentElementId) not in viewerIds:
                 shownViews = shownViews - 1
         if shownViews < 1:
             hideList.Add(element.Id)
@@ -1342,7 +1342,7 @@ def GetElementsVisibleInView(
                 print(e)
         viewModelCategories = List[DB.BuiltInCategory](
             [
-                category.Id.IntegerValue
+                GetElementIdValue(category.Id)
                 for category in visibleModelCategories
                 if not view.GetCategoryHidden(category.Id)
             ]
@@ -1417,14 +1417,6 @@ def GetElementsVisibleInView(
 def ExportScheduleAsDictionary(viewSchedule):
     LOGGER.set_debug_mode()
     LOGGER.info("flamingo.revit.ExportScheduleAsDictionary")
-    LOGGER.debug(
-        "viewSchedule.Id.IntegerValue = {}".format(viewSchedule.Id.IntegerValue)
-    )
-    #  DB.SectionType.None
-    #  DB.SectionType.Header
-    #  DB.SectionType.Body
-    #  DB.SectionType.Summary
-    #  DB.SectionType.Footer
     dictionary = []
     if type(viewSchedule) == DB.ViewSchedule:
         tableData = viewSchedule.GetTableData()
@@ -1708,7 +1700,7 @@ def GetSolidFillId(doc):
 
 def GetElementIdValue(elementId, version=None):
     version = version or HOST_APP.version
-    if version >= 2024:
+    if version >= "2024":
         return elementId.Value
     else:
         return elementId.IntegerValue

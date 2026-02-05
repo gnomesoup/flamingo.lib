@@ -3,6 +3,7 @@ from Autodesk.Revit import DB
 from flamingo.revit import (
     GetViewPhase,
     GetElementRooms,
+    GetElementIdValue,
     SetParameter,
     GetScheduledParameterIds,
     GetScheduledParameterByName,
@@ -644,7 +645,9 @@ def GetCOBieSpaceElements(doc=None, phase=None, cobieParameterId=None):
     )
 
     if phase:
-        LOGGER.debug("Filtering by new on phaseId: {}".format(phase.Id.IntegerValue))
+        LOGGER.debug(
+            "Filtering by new on phaseId: {}".format(GetElementIdValue(phase.Id))
+        )
         elements = [
             element
             for element in elements
@@ -723,7 +726,7 @@ def GetCOBieComponentElements(doc=None, phase=None, cobieParameterId=None):
         .WherePasses(elementParameterFilter)
     )
     if phase:
-        LOGGER.debug("Filtering by new on phaseId: {}".format(phase.Id.IntegerValue))
+        LOGGER.debug("Filtering by new on phaseId: {}".format(GetElementIdValue(phase.Id)))
         elementPhaseStatusFilter = DB.ElementPhaseStatusFilter(
             phase.Id, DB.ElementOnPhaseStatus.New
         )
@@ -751,7 +754,7 @@ def COBieComponentAutoSelect(view, doc=None):
             if COBieTypeIsEnabled(symbol):
                 familySymbolIds.add(symbol.Id)
         except Exception as e:
-            print("{}: {}".format(element.Id.IntegerValue, e))
+            print("{}: {}".format(GetElementIdValue(element.Id), e))
 
     componentView = (
         DB.FilteredElementCollector(doc)
@@ -973,6 +976,7 @@ def GetCDXCrosswalkData():
 
 def SetCOBieCreatedByOn(element, userEmail, blankOnly=None, doc=None):
     from datetime import datetime
+
     doc = doc or HOST_APP.doc
     blankOnly = blankOnly or True
     cobieCreatedByGuid = Guid("fc95531f-3d82-40c6-b03f-c6a7cf97b828")
@@ -989,6 +993,7 @@ def SetCOBieCreatedByOn(element, userEmail, blankOnly=None, doc=None):
         except Exception as e:
             LOGGER.warn("Error setting CreatedOn to element: {}".format(element.Id))
     return
+
 
 def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
     from flamingo.extensible_storage import SetSchemaData
@@ -1095,7 +1100,7 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
                         id=currentZoneData["ID"],
                         externalId=currentZoneData["ExternalID"],
                         name=zoneName,
-                        description=currentZoneData['Description'],
+                        description=currentZoneData["Description"],
                         createdBy=currentZoneData["CreatedBy"],
                         createdOn=currentZoneData["CreatedOn"],
                         category=currentZoneData["Category"],
@@ -1135,6 +1140,7 @@ def CDXParametersToCOBie(cdxCrosswalkData=None, doc=None):
 
 def GetCOBieZones(doc=None):
     from xml.etree import ElementTree as ET
+
     # from pyrevit.framework import IList
     projectInformation = doc.ProjectInformation
     zoneSchemaGUID = "e0fc673a-2f54-4f88-b168-186716faaff4"
