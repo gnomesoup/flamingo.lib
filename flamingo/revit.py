@@ -1705,3 +1705,10 @@ def GetSolidFillId(doc):
         if fillPatternElement.GetFillPattern().IsSolidFill:
             return fillPatternElement.Id
     return
+
+def GetElementIdValue(elementId, version=None):
+    version = version or HOST_APP.version
+    if version >= 2024:
+        return elementId.Value
+    else:
+        return elementId.IntegerValue
