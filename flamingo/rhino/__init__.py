@@ -7,7 +7,7 @@ from System.IO import IOException
 clr.AddReference("RhinoCommon")
 clr.AddReference("RhinoInside.Revit")
 
-from Rhino import RhinoApp
+from Rhino import RhinoApp, RhinoDoc
 
 LOGGER = script.get_logger()
 OUTPUT = script.get_output()
@@ -43,6 +43,7 @@ def FindOrAddRhinoLayer(layer_name, rhinoDoc=None):
     Returns:
         The found or newly added layer
     """
+    rhinoDoc = rhinoDoc or RhinoDoc.ActiveDoc
     try:
         layer_index = rhinoDoc.Layers.FindByFullPath(layer_name, True)
         if layer_index >= 0:
