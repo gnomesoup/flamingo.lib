@@ -1,8 +1,8 @@
 from distutils.version import StrictVersion
 from pyrevit import clr, script
 import re
+from System import Drawing
 from System.IO import IOException
-
 
 clr.AddReference("RhinoCommon")
 clr.AddReference("RhinoInside.Revit")
@@ -33,3 +33,23 @@ def check_rhino_version(minimum_version):
     except ValueError as e:
         LOGGER.debug("Version comparison error: {}".format(e))
         return False
+
+def FindOrAddRhinoLayer(layer_name, rhinoDoc=None):
+    """
+    Find or add a layer in the Rhino document
+    Args:
+        layer_name (str): Name of the layer to find or add
+        rhinoDoc (optional): Rhino document
+    Returns:
+        The found or newly added layer
+    """
+    try:
+        layer_index = rhinoDoc.Layers.FindByFullPath(layer_name, True)
+        if layer_index >= 0:
+            return rhinoDoc.Layers[layer_index]
+        else:
+            new_layer = rhinoDoc.Layers.Add(layer_name, Drawing.Color.White)
+            return rhinoDoc.Layers[new_layer]
+    except IOException as e:
+        LOGGER.debug("Error accessing Rhino document: {}".format(e))
+        return None
